@@ -38,9 +38,9 @@ age -p .launchr/keyring.yaml > .launchr/keyring.yaml.age
 
 ## In code
 
-Include with launchr build:
+Add a module dependency:
 ```shell
-launchr build -p github.com/launchrctl/keyring
+go get -u github.com/launchrctl/keyring
 ```
 
 To use the keyring in code, get the service from the app:
@@ -63,5 +63,9 @@ func GetPassword(app *launchr.App, url string) (keyring.CredentialsItem, error) 
 	}
 	return creds, nil
 }
+```
 
+Include with launchr build:
+```shell
+launchr build -p github.com/launchrctl/keyring
 ```
