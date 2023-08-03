@@ -4,7 +4,7 @@ go 1.20
 
 require (
 	filippo.io/age v1.1.1
-	github.com/launchrctl/launchr v0.0.7
+	github.com/launchrctl/launchr v0.0.8
 	github.com/spf13/cobra v1.7.0
 	golang.org/x/term v0.10.0
 	gopkg.in/yaml.v3 v3.0.1
