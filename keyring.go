@@ -51,17 +51,21 @@ type Keyring interface {
 type keyringService struct {
 	fname string
 	store CredentialsStore
+	cfg   launchr.GlobalConfig
 }
 
-func newKeyringService(cfgDir string) Keyring {
+func newKeyringService(cfg launchr.GlobalConfig) Keyring {
 	return &keyringService{
-		fname: filepath.Clean(filepath.Join(cfgDir, defaultFileYaml)),
+		fname: cfg.Path(defaultFileYaml),
+		cfg:   cfg,
 	}
 }
 
 // ServiceInfo implements launchr.Service
 func (k *keyringService) ServiceInfo() launchr.ServiceInfo {
-	return launchr.ServiceInfo{}
+	return launchr.ServiceInfo{
+		ID: ID,
+	}
 }
 
 func (k *keyringService) defaultStore() (CredentialsStore, error) {
@@ -113,8 +117,8 @@ func (k *keyringService) Save() error {
 	if err != nil {
 		return err
 	}
-	// @todo refactor to use config service.
-	err = os.MkdirAll(filepath.Dir(k.fname), 0750)
+
+	err = launchr.EnsurePath(filepath.Dir(k.fname))
 	if err != nil {
 		return err
 	}
@@ -133,7 +137,7 @@ func (s *credentialsStoreYaml) load() error {
 	}
 
 	err := s.file.Open(os.O_RDONLY, 0)
-	if errors.Is(err, os.ErrNotExist) {
+	if os.IsNotExist(err) {
 		// The keyring is new.
 		s.loaded = true
 		return nil

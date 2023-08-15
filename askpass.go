@@ -83,11 +83,7 @@ func (a AskPassWithTerminal) readPass(prompt string) (string, error) {
 type AskPassConstFlow string
 
 // GetPass implements AskPass interface.
-func (a AskPassConstFlow) GetPass() (string, error) {
-	return string(a), nil
-}
+func (a AskPassConstFlow) GetPass() (string, error) { return string(a), nil }
 
 // NewPass implements AskPass interface.
-func (a AskPassConstFlow) NewPass() (string, error) {
-	return string(a), nil
-}
+func (a AskPassConstFlow) NewPass() (string, error) { return string(a), nil }

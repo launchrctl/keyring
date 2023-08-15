@@ -20,9 +20,10 @@ func init() {
 	launchr.RegisterPlugin(&Plugin{})
 }
 
-// Plugin is launchr plugin providing web ui.
+// Plugin is launchr plugin providing keyring.
 type Plugin struct {
-	k Keyring
+	k   Keyring
+	cfg launchr.GlobalConfig
 }
 
 // PluginInfo implements launchr.Plugin interface.
@@ -34,15 +35,15 @@ func (p *Plugin) PluginInfo() launchr.PluginInfo {
 
 // InitApp implements launchr.Plugin interface.
 func (p *Plugin) InitApp(app *launchr.App) error {
-	m := app.ServiceManager()
-	p.k = newKeyringService(app.GetCfgDir())
-	m.Add(ID, p.k)
+	p.cfg = launchr.GetService[launchr.GlobalConfig](app)
+	p.k = newKeyringService(p.cfg)
+	app.AddService(p.k)
 	return nil
 }
 
 var passphrase string
 
-// CobraAddCommands implements launchr.CobraPlugin interface to provide web functionality.
+// CobraAddCommands implements launchr.CobraPlugin interface to provide keyring functionality.
 func (p *Plugin) CobraAddCommands(rootCmd *cobra.Command) error {
 	var creds CredentialsItem
 	var loginCmd = &cobra.Command{
