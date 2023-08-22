@@ -27,6 +27,7 @@ launchr compose --keyring-passphrase=YOURPASSHRPASE
 To delete an item from the keyring:
 ```shell
 launchr logout URL
+launchr logout --all
 ```
 
 The file is created in `.launchr/keyring.yaml.age`.  
@@ -52,9 +53,10 @@ import (
 	"github.com/launchrctl/launchr"
 )
 
-func GetPassword(app *launchr.App, url string) (keyring.CredentialsItem, error) {
+func GetPassword(app launchr.App, url string) (keyring.CredentialsItem, error) {
 	// Get the service by type from the app.
-	k := launchr.GetService[keyring.Keyring](app)
+	var k keyring.Keyring
+	app.GetService(k)
 	// Get by url. Error if the keyring could not be unlocked.
 	// Error keyring.ErrNotFound is returned if an item was not found.
 	creds, err := k.GetForURL(url)

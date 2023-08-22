@@ -3,7 +3,7 @@ package keyring
 import (
 	"errors"
 	"os"
-	"path/filepath"
+	"strings"
 
 	"gopkg.in/yaml.v3"
 
@@ -13,8 +13,10 @@ import (
 const defaultFileYaml = "keyring.yaml"
 
 var (
-	ErrNotFound    = errors.New("credential item not found")  // ErrNotFound if an item was not found
-	ErrEmptyFields = errors.New("credentials can't be empty") // ErrEmptyFields if fields are empty
+	ErrNotFound         = errors.New("credential item not found")  // ErrNotFound if an item was not found
+	ErrEmptyFields      = errors.New("credentials can't be empty") // ErrEmptyFields if fields are empty
+	ErrEmptyPass        = errors.New("passphrase can't be empty")  // ErrEmptyPass if a passphrase is empty
+	ErrKeyringMalformed = errors.New("the keyring is malformed")   // ErrKeyringMalformed when keyring can't be read.
 )
 
 // CredentialsItem stores credentials.
@@ -38,8 +40,10 @@ type CredentialsStore interface {
 	// Error is returned if the vault couldn't be unlocked.
 	// Error ErrNotFound if the credentials were not found.
 	RemoveItem(url string) error
-	// Save saves the content to the persistent storage.
+	// Save saves the keyring to the persistent storage.
 	Save() error
+	// Destroy removes the keyring from the persistent storage.
+	Destroy() error
 }
 
 // Keyring is a launchr.Service providing password store functionality.
@@ -51,21 +55,19 @@ type Keyring interface {
 type keyringService struct {
 	fname string
 	store CredentialsStore
-	cfg   launchr.GlobalConfig
+	cfg   launchr.Config
 }
 
-func newKeyringService(cfg launchr.GlobalConfig) Keyring {
+func newKeyringService(cfg launchr.Config) Keyring {
 	return &keyringService{
 		fname: cfg.Path(defaultFileYaml),
 		cfg:   cfg,
 	}
 }
 
-// ServiceInfo implements launchr.Service
+// ServiceInfo implements launchr.Service interface.
 func (k *keyringService) ServiceInfo() launchr.ServiceInfo {
-	return launchr.ServiceInfo{
-		ID: ID,
-	}
+	return launchr.ServiceInfo{}
 }
 
 func (k *keyringService) defaultStore() (CredentialsStore, error) {
@@ -117,12 +119,16 @@ func (k *keyringService) Save() error {
 	if err != nil {
 		return err
 	}
+	return s.Save()
+}
 
-	err = launchr.EnsurePath(filepath.Dir(k.fname))
+// Destroy implements CredentialsStore interface. Uses service default store.
+func (k *keyringService) Destroy() error {
+	s, err := k.defaultStore()
 	if err != nil {
 		return err
 	}
-	return s.Save()
+	return s.Destroy()
 }
 
 type credentialsStoreYaml struct {
@@ -145,11 +151,19 @@ func (s *credentialsStoreYaml) load() error {
 		return err
 	}
 	defer s.file.Close()
-
+	if err = s.file.Unlock(false); err != nil {
+		return err
+	}
 	dec := yaml.NewDecoder(s.file)
 	var items []CredentialsItem
 	err = dec.Decode(&items)
 	if err != nil {
+		if strings.Contains(err.Error(), ErrKeyringMalformed.Error()) {
+			// The keyring is malformed, treat it as new.
+			s.file.Lock()
+			s.loaded = true
+			return nil
+		}
 		return err
 	}
 	s.items = items
@@ -215,6 +229,14 @@ func (s *credentialsStoreYaml) Save() error {
 		return err
 	}
 	defer s.file.Close()
+	if err = s.file.Unlock(true); err != nil {
+		return err
+	}
 	enc := yaml.NewEncoder(s.file)
 	return enc.Encode(s.items)
+}
+
+// Destroy implements CredentialsStore interface.
+func (s *credentialsStoreYaml) Destroy() error {
+	return s.file.Remove()
 }

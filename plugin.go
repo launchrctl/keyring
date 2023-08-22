@@ -13,9 +13,6 @@ import (
 	"github.com/launchrctl/launchr"
 )
 
-// ID is a plugin id.
-const ID = "keyring"
-
 func init() {
 	launchr.RegisterPlugin(&Plugin{})
 }
@@ -23,19 +20,17 @@ func init() {
 // Plugin is launchr plugin providing keyring.
 type Plugin struct {
 	k   Keyring
-	cfg launchr.GlobalConfig
+	cfg launchr.Config
 }
 
 // PluginInfo implements launchr.Plugin interface.
 func (p *Plugin) PluginInfo() launchr.PluginInfo {
-	return launchr.PluginInfo{
-		ID: ID,
-	}
+	return launchr.PluginInfo{}
 }
 
-// InitApp implements launchr.Plugin interface.
-func (p *Plugin) InitApp(app *launchr.App) error {
-	p.cfg = launchr.GetService[launchr.GlobalConfig](app)
+// OnAppInit implements launchr.Plugin interface.
+func (p *Plugin) OnAppInit(app launchr.App) error {
+	app.GetService(&p.cfg)
 	p.k = newKeyringService(p.cfg)
 	app.AddService(p.k)
 	return nil
@@ -55,13 +50,22 @@ func (p *Plugin) CobraAddCommands(rootCmd *cobra.Command) error {
 			return login(p.k, creds)
 		},
 	}
+	var fLogoutAll bool
 	var logoutCmd = &cobra.Command{
-		Use:   "logout",
+		Use:   "logout [URL]",
 		Short: "Logs out from a service",
-		Args:  cobra.ExactArgs(1),
+		PreRunE: func(cmd *cobra.Command, args []string) error {
+			if fLogoutAll && len(args) > 0 || !fLogoutAll && len(args) == 0 {
+				return fmt.Errorf("please, either provide a url or use --all flag")
+			}
+			return nil
+		},
 		RunE: func(cmd *cobra.Command, args []string) error {
 			// Don't show usage help on a runtime error.
 			cmd.SilenceUsage = true
+			if fLogoutAll {
+				return logoutAll(p.k)
+			}
 			return logout(p.k, args[0])
 		},
 	}
@@ -70,6 +74,8 @@ func (p *Plugin) CobraAddCommands(rootCmd *cobra.Command) error {
 	loginCmd.Flags().StringVarP(&creds.URL, "url", "", "", "URL")
 	loginCmd.Flags().StringVarP(&creds.Username, "username", "", "", "Username")
 	loginCmd.Flags().StringVarP(&creds.Password, "password", "", "", "Password")
+	// Logout flags
+	logoutCmd.Flags().BoolVarP(&fLogoutAll, "all", "", false, "Logs out from all services")
 	// Passphrase flags
 	rootCmd.PersistentFlags().StringVarP(&passphrase, "keyring-passphrase", "", "", "Passphrase for keyring encryption/decryption")
 	// Command flags.
@@ -79,12 +85,15 @@ func (p *Plugin) CobraAddCommands(rootCmd *cobra.Command) error {
 }
 
 func login(k Keyring, creds CredentialsItem) error {
-	// Ask for login elements.
-	err := withTerminal(func(in, out *os.File) error {
-		return credentialsFromTty(&creds, in, out)
-	})
-	if err != nil {
-		return err
+	// Ask for login elements if some elements are empty.
+	var err error
+	if creds == (CredentialsItem{}) {
+		err = withTerminal(func(in, out *os.File) error {
+			return credentialsFromTty(&creds, in, out)
+		})
+		if err != nil {
+			return err
+		}
 	}
 
 	err = k.AddItem(creds)
@@ -133,4 +142,8 @@ func logout(k Keyring, url string) error {
 		return err
 	}
 	return k.Save()
+}
+
+func logoutAll(k Keyring) error {
+	return k.Destroy()
 }
