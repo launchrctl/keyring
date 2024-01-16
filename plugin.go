@@ -88,9 +88,7 @@ func login(k Keyring, creds CredentialsItem) error {
 	// Ask for login elements if some elements are empty.
 	var err error
 	if creds == (CredentialsItem{}) {
-		err = withTerminal(func(in, out *os.File) error {
-			return credentialsFromTty(&creds, in, out)
-		})
+		err = RequestCredentialsFromTty(&creds)
 		if err != nil {
 			return err
 		}
@@ -101,6 +99,12 @@ func login(k Keyring, creds CredentialsItem) error {
 		return err
 	}
 	return k.Save()
+}
+
+func RequestCredentialsFromTty(creds *CredentialsItem) error {
+	return withTerminal(func(in, out *os.File) error {
+		return credentialsFromTty(creds, in, out)
+	})
 }
 
 func credentialsFromTty(creds *CredentialsItem, in *os.File, out *os.File) error {
