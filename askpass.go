@@ -34,7 +34,7 @@ func withTerminal(f func(in, out *os.File) error) error {
 		return f(tty, tty)
 	} else if term.IsTerminal(int(os.Stdin.Fd())) {
 		return f(os.Stdin, os.Stdin)
-	} else {
+	} else { //nolint revive
 		return fmt.Errorf("standard input is not a terminal, and /dev/tty is not available: %v", err)
 	}
 }
