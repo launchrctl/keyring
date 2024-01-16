@@ -101,6 +101,7 @@ func login(k Keyring, creds CredentialsItem) error {
 	return k.Save()
 }
 
+// RequestCredentialsFromTty gets credentials from tty
 func RequestCredentialsFromTty(creds *CredentialsItem) error {
 	return withTerminal(func(in, out *os.File) error {
 		return credentialsFromTty(creds, in, out)
