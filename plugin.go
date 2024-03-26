@@ -11,6 +11,12 @@ import (
 	"golang.org/x/term"
 
 	"github.com/launchrctl/launchr"
+	"github.com/launchrctl/launchr/pkg/jsonschema"
+	"github.com/launchrctl/launchr/pkg/log"
+)
+
+const (
+	getByKeyProc = "keyring.getByKey"
 )
 
 func init() {
@@ -34,6 +40,44 @@ func (p *Plugin) OnAppInit(app launchr.App) error {
 	p.k = newKeyringService(p.cfg)
 	app.AddService(p.k)
 	return nil
+}
+
+// DiscoverProcessors implements launchr.ProcessorDiscoveryPlugin interface.
+// It's a hook to add new value processors.
+func (p *Plugin) DiscoverProcessors(app launchr.App) error {
+	getByKey := func(value interface{}, options map[string]interface{}) (interface{}, error) {
+		return getByKeyProcessor(value, options, p.k)
+	}
+
+	proc := launchr.NewFuncProcessor([]jsonschema.Type{jsonschema.String}, getByKey)
+	err := app.AddProcessor(getByKeyProc, proc)
+
+	return err
+}
+
+func getByKeyProcessor(value interface{}, options map[string]interface{}, k Keyring) (interface{}, error) {
+	val, okConversion := value.(string)
+	if !okConversion {
+		return val, fmt.Errorf("error converting value for %s processor, please ensure value type match", getByKeyProc)
+	}
+
+	if val != "" {
+		log.Debug("skipping %s processor, value is not empty", getByKeyProc)
+		return value, nil
+	}
+
+	key, ok := options["key"].(string)
+	if !ok {
+		return value, fmt.Errorf("option `key` required for %s processor", getByKeyProc)
+	}
+
+	v, err := k.GetForKey(key)
+	if err != nil {
+		return value, err
+	}
+
+	return v.Value, nil
+
 }
 
 var passphrase string
