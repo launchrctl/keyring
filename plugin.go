@@ -11,6 +11,12 @@ import (
 	"golang.org/x/term"
 
 	"github.com/launchrctl/launchr"
+	"github.com/launchrctl/launchr/pkg/jsonschema"
+	"github.com/launchrctl/launchr/pkg/log"
+)
+
+const (
+	getByKeyProc = "keyring.getByKey"
 )
 
 func init() {
@@ -36,6 +42,44 @@ func (p *Plugin) OnAppInit(app launchr.App) error {
 	return nil
 }
 
+// DiscoverProcessors implements launchr.ProcessorDiscoveryPlugin interface.
+// It's a hook to add new value processors.
+func (p *Plugin) DiscoverProcessors(app launchr.App) error {
+	getByKey := func(value interface{}, options map[string]interface{}) (interface{}, error) {
+		return getByKeyProcessor(value, options, p.k)
+	}
+
+	proc := launchr.NewFuncProcessor([]jsonschema.Type{jsonschema.String}, getByKey)
+	err := app.AddProcessor(getByKeyProc, proc)
+
+	return err
+}
+
+func getByKeyProcessor(value interface{}, options map[string]interface{}, k Keyring) (interface{}, error) {
+	val, okConversion := value.(string)
+	if !okConversion {
+		return val, fmt.Errorf("error converting value for %s processor, please ensure value type match", getByKeyProc)
+	}
+
+	if val != "" {
+		log.Debug("skipping %s processor, value is not empty", getByKeyProc)
+		return value, nil
+	}
+
+	key, ok := options["key"].(string)
+	if !ok {
+		return value, fmt.Errorf("option `key` required for %s processor", getByKeyProc)
+	}
+
+	v, err := k.GetForKey(key)
+	if err != nil {
+		return value, err
+	}
+
+	return v.Value, nil
+
+}
+
 var passphrase string
 
 // CobraAddCommands implements launchr.CobraPlugin interface to provide keyring functionality.
@@ -50,23 +94,72 @@ func (p *Plugin) CobraAddCommands(rootCmd *cobra.Command) error {
 			return login(p.k, creds)
 		},
 	}
-	var fLogoutAll bool
+
+	ensureCleanOption := func(cmd *cobra.Command, args []string, message string, cleanAll bool) error {
+		if cleanAll && len(args) > 0 || !cleanAll && len(args) == 0 {
+			return fmt.Errorf(message)
+		}
+
+		return nil
+	}
+
+	var cleanAll bool
 	var logoutCmd = &cobra.Command{
 		Use:   "logout [URL]",
 		Short: "Logs out from a service",
 		PreRunE: func(cmd *cobra.Command, args []string) error {
-			if fLogoutAll && len(args) > 0 || !fLogoutAll && len(args) == 0 {
-				return fmt.Errorf("please, either provide a url or use --all flag")
-			}
-			return nil
+			return ensureCleanOption(cmd, args, "please, either provide an URL or use --all flag", cleanAll)
 		},
 		RunE: func(cmd *cobra.Command, args []string) error {
 			// Don't show usage help on a runtime error.
 			cmd.SilenceUsage = true
-			if fLogoutAll {
-				return logoutAll(p.k)
+
+			urlArg := ""
+			if len(args) > 0 {
+				urlArg = args[0]
 			}
-			return logout(p.k, args[0])
+
+			return logout(p.k, urlArg, cleanAll)
+		},
+	}
+
+	var key KeyValueItem
+	var setKeyCmd = &cobra.Command{
+		Use:   "set",
+		Short: "Store key-value pair",
+		RunE: func(cmd *cobra.Command, args []string) error {
+			// Don't show usage help on a runtime error.
+			cmd.SilenceUsage = true
+			return saveKey(p.k, key)
+		},
+	}
+
+	var unsetKeyCmd = &cobra.Command{
+		Use:   "unset [key]",
+		Short: "Removes key-value pair by key",
+		PreRunE: func(cmd *cobra.Command, args []string) error {
+			return ensureCleanOption(cmd, args, "please, either target key or use --all flag", cleanAll)
+		},
+		RunE: func(cmd *cobra.Command, args []string) error {
+			// Don't show usage help on a runtime error.
+			cmd.SilenceUsage = true
+
+			keyArg := ""
+			if len(args) > 0 {
+				keyArg = args[0]
+			}
+
+			return removeKey(p.k, keyArg, cleanAll)
+		},
+	}
+
+	var purgeCmd = &cobra.Command{
+		Use:   "destroy",
+		Short: "Remove age file",
+		RunE: func(cmd *cobra.Command, args []string) error {
+			// Don't show usage help on a runtime error.
+			cmd.SilenceUsage = true
+			return purge(p.k)
 		},
 	}
 
@@ -75,12 +168,20 @@ func (p *Plugin) CobraAddCommands(rootCmd *cobra.Command) error {
 	loginCmd.Flags().StringVarP(&creds.Username, "username", "", "", "Username")
 	loginCmd.Flags().StringVarP(&creds.Password, "password", "", "", "Password")
 	// Logout flags
-	logoutCmd.Flags().BoolVarP(&fLogoutAll, "all", "", false, "Logs out from all services")
+	logoutCmd.Flags().BoolVarP(&cleanAll, "all", "", false, "Logs out from all services")
+	// Key flags
+	setKeyCmd.Flags().StringVarP(&key.Key, "key", "", "", "Key")
+	setKeyCmd.Flags().StringVarP(&key.Value, "value", "", "", "Value")
+	// Unset flags
+	unsetKeyCmd.Flags().BoolVarP(&cleanAll, "all", "", false, "Removes all key-pairs")
 	// Passphrase flags
 	rootCmd.PersistentFlags().StringVarP(&passphrase, "keyring-passphrase", "", "", "Passphrase for keyring encryption/decryption")
 	// Command flags.
 	rootCmd.AddCommand(loginCmd)
 	rootCmd.AddCommand(logoutCmd)
+	rootCmd.AddCommand(setKeyCmd)
+	rootCmd.AddCommand(unsetKeyCmd)
+	rootCmd.AddCommand(purgeCmd)
 	return nil
 }
 
@@ -95,6 +196,23 @@ func login(k Keyring, creds CredentialsItem) error {
 	}
 
 	err = k.AddItem(creds)
+	if err != nil {
+		return err
+	}
+	return k.Save()
+}
+
+func saveKey(k Keyring, item KeyValueItem) error {
+	// Ask for login elements if some elements are empty.
+	var err error
+	if item == (KeyValueItem{}) {
+		err = RequestKeyValueFromTty(&item)
+		if err != nil {
+			return err
+		}
+	}
+
+	err = k.AddItem(item)
 	if err != nil {
 		return err
 	}
@@ -141,14 +259,67 @@ func credentialsFromTty(creds *CredentialsItem, in *os.File, out *os.File) error
 	return nil
 }
 
-func logout(k Keyring, url string) error {
-	err := k.RemoveItem(url)
+// RequestKeyValueFromTty gets key-value pair from tty.
+func RequestKeyValueFromTty(item *KeyValueItem) error {
+	return withTerminal(func(in, out *os.File) error {
+		return keyValueFromTty(item, in, out)
+	})
+}
+
+func keyValueFromTty(item *KeyValueItem, in *os.File, out *os.File) error {
+	reader := bufio.NewReader(in)
+
+	if item.Key == "" {
+		fmt.Fprint(out, "Key: ")
+		username, err := reader.ReadString('\n')
+		if err != nil {
+			return err
+		}
+		item.Key = strings.TrimSpace(username)
+	}
+
+	if item.Value == "" {
+		fmt.Fprint(out, "Value: ")
+		// User readPassword for sensitive data
+		byteValue, err := term.ReadPassword(int(in.Fd()))
+		fmt.Fprint(out, "\n")
+		if err != nil {
+			return err
+		}
+		item.Value = strings.TrimSpace(string(byteValue))
+	}
+	return nil
+}
+
+func logout(k Keyring, url string, all bool) error {
+	var err error
+	if all {
+		err = k.cleanStorage(CredentialsItem{})
+	} else {
+		err = k.RemoveByURL(url)
+	}
 	if err != nil {
 		return err
 	}
+
 	return k.Save()
 }
 
-func logoutAll(k Keyring) error {
+func removeKey(k Keyring, key string, all bool) error {
+	var err error
+	if all {
+		err = k.cleanStorage(KeyValueItem{})
+
+	} else {
+		err = k.RemoveByKey(key)
+	}
+	if err != nil {
+		return err
+	}
+
+	return k.Save()
+}
+
+func purge(k Keyring) error {
 	return k.Destroy()
 }

@@ -1,4 +1,5 @@
 .DS_Store
+.idea
 /bin
 /build_*
 .launchr
@@ -6,3 +7,4 @@
 *.gz
 *.gen.go
 dist/
+vendor/
