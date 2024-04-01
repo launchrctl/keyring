@@ -11,6 +11,7 @@ import (
 	"golang.org/x/term"
 
 	"github.com/launchrctl/launchr"
+	"github.com/launchrctl/launchr/pkg/action"
 	"github.com/launchrctl/launchr/pkg/jsonschema"
 	"github.com/launchrctl/launchr/pkg/log"
 )
@@ -39,36 +40,41 @@ func (p *Plugin) OnAppInit(app launchr.App) error {
 	app.GetService(&p.cfg)
 	p.k = newKeyringService(p.cfg)
 	app.AddService(p.k)
+
+	var m action.Manager
+	app.GetService(&m)
+
+	discoverProcessors(m, p.k)
 	return nil
 }
 
 // DiscoverProcessors implements launchr.ProcessorDiscoveryPlugin interface.
 // It's a hook to add new value processors.
-func (p *Plugin) DiscoverProcessors(app launchr.App) error {
+func discoverProcessors(m action.Manager, keyring Keyring) {
 	getByKey := func(value interface{}, options map[string]interface{}) (interface{}, error) {
-		return getByKeyProcessor(value, options, p.k)
+		return getByKeyProcessor(value, options, keyring)
 	}
 
-	proc := launchr.NewFuncProcessor([]jsonschema.Type{jsonschema.String}, getByKey)
-	err := app.AddProcessor(getByKeyProc, proc)
-
-	return err
+	proc := action.NewFuncProcessor([]jsonschema.Type{jsonschema.String}, getByKey)
+	m.AddProcessor(getByKeyProc, proc)
 }
 
 func getByKeyProcessor(value interface{}, options map[string]interface{}, k Keyring) (interface{}, error) {
-	val, okConversion := value.(string)
-	if !okConversion {
-		return val, fmt.Errorf("error converting value for %s processor, please ensure value type match", getByKeyProc)
+	val, ok := value.(string)
+	if !ok {
+		return val, fmt.Errorf(
+			"string type is expected for %q processor. Change value type or remove the processor", getByKeyProc,
+		)
 	}
 
 	if val != "" {
-		log.Debug("skipping %s processor, value is not empty", getByKeyProc)
+		log.Debug("skipping %s processor, value is not empty. Value remains unchanged", getByKeyProc)
 		return value, nil
 	}
 
 	key, ok := options["key"].(string)
 	if !ok {
-		return value, fmt.Errorf("option `key` required for %s processor", getByKeyProc)
+		return value, fmt.Errorf("option `key` is required for %q processor", getByKeyProc)
 	}
 
 	v, err := k.GetForKey(key)

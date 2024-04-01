@@ -6,7 +6,7 @@ toolchain go1.21.6
 
 require (
 	filippo.io/age v1.1.1
-	github.com/launchrctl/launchr v0.6.1-0.20240326123500-90491c8ad6a0
+	github.com/launchrctl/launchr v0.6.1-0.20240402105213-c1ae849989a2
 	github.com/spf13/cobra v1.8.0
 	golang.org/x/term v0.16.0
 	gopkg.in/yaml.v3 v3.0.1
@@ -49,6 +49,6 @@ require (
 	go.uber.org/mock v0.4.0 // indirect
 	golang.org/x/crypto v0.18.0 // indirect
 	golang.org/x/mod v0.15.0 // indirect
-	golang.org/x/sys v0.17.0 // indirect
+	golang.org/x/sys v0.18.0 // indirect
 	golang.org/x/tools v0.18.0 // indirect
 )
