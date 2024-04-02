@@ -51,14 +51,6 @@ func (p *Plugin) CobraAddCommands(rootCmd *cobra.Command) error {
 		},
 	}
 
-	ensureCleanOption := func(cmd *cobra.Command, args []string, message string, cleanAll bool) error {
-		if cleanAll && len(args) > 0 || !cleanAll && len(args) == 0 {
-			return fmt.Errorf(message)
-		}
-
-		return nil
-	}
-
 	var cleanAll bool
 	var logoutCmd = &cobra.Command{
 		Use:   "logout [URL]",
@@ -110,8 +102,8 @@ func (p *Plugin) CobraAddCommands(rootCmd *cobra.Command) error {
 	}
 
 	var purgeCmd = &cobra.Command{
-		Use:   "destroy",
-		Short: "Remove age file",
+		Use:   "purge",
+		Short: "Remove keyring file",
 		RunE: func(cmd *cobra.Command, args []string) error {
 			// Don't show usage help on a runtime error.
 			cmd.SilenceUsage = true
@@ -138,6 +130,14 @@ func (p *Plugin) CobraAddCommands(rootCmd *cobra.Command) error {
 	rootCmd.AddCommand(setKeyCmd)
 	rootCmd.AddCommand(unsetKeyCmd)
 	rootCmd.AddCommand(purgeCmd)
+	return nil
+}
+
+func ensureCleanOption(_ *cobra.Command, args []string, message string, cleanAll bool) error {
+	if cleanAll && len(args) > 0 || !cleanAll && len(args) == 0 {
+		return fmt.Errorf(message)
+	}
+
 	return nil
 }
 
@@ -236,7 +236,6 @@ func keyValueFromTty(item *KeyValueItem, in *os.File, out *os.File) error {
 
 	if item.Value == "" {
 		fmt.Fprint(out, "Value: ")
-		// User readPassword for sensitive data
 		byteValue, err := term.ReadPassword(int(in.Fd()))
 		fmt.Fprint(out, "\n")
 		if err != nil {
@@ -250,7 +249,7 @@ func keyValueFromTty(item *KeyValueItem, in *os.File, out *os.File) error {
 func logout(k Keyring, url string, all bool) error {
 	var err error
 	if all {
-		err = k.cleanStorage(CredentialsItem{})
+		err = k.CleanStorage(CredentialsItem{})
 	} else {
 		err = k.RemoveByURL(url)
 	}
@@ -264,8 +263,7 @@ func logout(k Keyring, url string, all bool) error {
 func removeKey(k Keyring, key string, all bool) error {
 	var err error
 	if all {
-		err = k.cleanStorage(KeyValueItem{})
-
+		err = k.CleanStorage(KeyValueItem{})
 	} else {
 		err = k.RemoveByKey(key)
 	}
