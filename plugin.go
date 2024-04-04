@@ -59,7 +59,7 @@ func discoverProcessors(m action.Manager, keyring Keyring) {
 	}
 
 	proc := action.NewFuncProcessor([]jsonschema.Type{jsonschema.String}, getByKey)
-	m.AddProcessor(getByKeyProc, proc)
+	m.AddValueProcessor(getByKeyProc, proc)
 }
 
 func getByKeyProcessor(value interface{}, options map[string]interface{}, k Keyring) (interface{}, error) {

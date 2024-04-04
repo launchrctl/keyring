@@ -6,7 +6,7 @@ toolchain go1.21.6
 
 require (
 	filippo.io/age v1.1.1
-	github.com/launchrctl/launchr v0.6.1-0.20240402105213-c1ae849989a2
+	github.com/launchrctl/launchr v0.6.1-0.20240404143916-6fce79f052c5
 	github.com/spf13/cobra v1.8.0
 	golang.org/x/term v0.16.0
 	gopkg.in/yaml.v3 v3.0.1
