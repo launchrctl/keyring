@@ -18,9 +18,9 @@ import (
 )
 
 const (
-	getByKeyProc        = "keyring.getByKey"
-	templateNotFoundURL = "%s not found in keyring. Use `%s login` to add it."
-	templateNotFoundKey = "%s not found in keyring. Use `%s set` to add it."
+	getByKeyProc   = "keyring.getByKey"
+	tplNotFoundURL = "%s not found in keyring. Use `%s login` to add it."
+	tplNotFoundKey = "%s not found in keyring. Use `%s set` to add it."
 )
 
 func init() {
@@ -82,7 +82,7 @@ func getByKeyProcessor(value interface{}, options map[string]interface{}, k Keyr
 
 	v, err := k.GetForKey(key)
 	if err != nil {
-		return value, buildNotFoundError(key, templateNotFoundKey, err)
+		return value, buildNotFoundError(key, tplNotFoundKey, err)
 	}
 
 	return v.Value, nil
@@ -313,7 +313,7 @@ func logout(k Keyring, url string, all bool) error {
 		err = k.RemoveByURL(url)
 	}
 	if err != nil {
-		return buildNotFoundError(url, templateNotFoundURL, err)
+		return buildNotFoundError(url, tplNotFoundURL, err)
 	}
 
 	return k.Save()
@@ -327,7 +327,7 @@ func removeKey(k Keyring, key string, all bool) error {
 		err = k.RemoveByKey(key)
 	}
 	if err != nil {
-		return buildNotFoundError(key, templateNotFoundKey, err)
+		return buildNotFoundError(key, tplNotFoundKey, err)
 	}
 
 	return k.Save()
