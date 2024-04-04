@@ -126,11 +126,14 @@ func (p *Plugin) CobraAddCommands(rootCmd *cobra.Command) error {
 
 	var key KeyValueItem
 	var setKeyCmd = &cobra.Command{
-		Use:   "set",
+		Use:   "set [key]",
 		Short: "Store new key-value pair to keyring",
+		Args:  cobra.MatchAll(cobra.ExactArgs(1), cobra.OnlyValidArgs),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			// Don't show usage help on a runtime error.
 			cmd.SilenceUsage = true
+
+			key.Key = args[0]
 			return saveKey(p.k, key)
 		},
 	}
@@ -171,7 +174,6 @@ func (p *Plugin) CobraAddCommands(rootCmd *cobra.Command) error {
 	// Logout flags
 	logoutCmd.Flags().BoolVarP(&cleanAll, "all", "", false, "Logs out from all services")
 	// Key flags
-	setKeyCmd.Flags().StringVarP(&key.Key, "key", "", "", "Key")
 	setKeyCmd.Flags().StringVarP(&key.Value, "value", "", "", "Value")
 	// Unset flags
 	unsetKeyCmd.Flags().BoolVarP(&cleanAll, "all", "", false, "Removes all key-pairs")
