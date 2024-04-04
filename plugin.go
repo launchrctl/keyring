@@ -3,6 +3,7 @@ package keyring
 
 import (
 	"bufio"
+	"errors"
 	"fmt"
 	"os"
 	"strings"
@@ -17,7 +18,9 @@ import (
 )
 
 const (
-	getByKeyProc = "keyring.getByKey"
+	getByKeyProc        = "keyring.getByKey"
+	templateNotFoundURL = "%s not found in keyring. Use `%s login` to add it."
+	templateNotFoundKey = "%s not found in keyring. Use `%s set` to add it."
 )
 
 func init() {
@@ -79,7 +82,7 @@ func getByKeyProcessor(value interface{}, options map[string]interface{}, k Keyr
 
 	v, err := k.GetForKey(key)
 	if err != nil {
-		return value, err
+		return value, buildNotFoundError(key, templateNotFoundKey, err)
 	}
 
 	return v.Value, nil
@@ -124,7 +127,7 @@ func (p *Plugin) CobraAddCommands(rootCmd *cobra.Command) error {
 	var key KeyValueItem
 	var setKeyCmd = &cobra.Command{
 		Use:   "set",
-		Short: "Store key-value pair",
+		Short: "Store new key-value pair to keyring",
 		RunE: func(cmd *cobra.Command, args []string) error {
 			// Don't show usage help on a runtime error.
 			cmd.SilenceUsage = true
@@ -134,7 +137,7 @@ func (p *Plugin) CobraAddCommands(rootCmd *cobra.Command) error {
 
 	var unsetKeyCmd = &cobra.Command{
 		Use:   "unset [key]",
-		Short: "Removes key-value pair by key",
+		Short: "Removes key-value pair from keyring",
 		PreRunE: func(cmd *cobra.Command, args []string) error {
 			return ensureCleanOption(cmd, args, "please, either target key or use --all flag", cleanAll)
 		},
@@ -153,7 +156,7 @@ func (p *Plugin) CobraAddCommands(rootCmd *cobra.Command) error {
 
 	var purgeCmd = &cobra.Command{
 		Use:   "purge",
-		Short: "Remove keyring file",
+		Short: "Remove existing keyring file",
 		RunE: func(cmd *cobra.Command, args []string) error {
 			// Don't show usage help on a runtime error.
 			cmd.SilenceUsage = true
@@ -191,6 +194,15 @@ func ensureCleanOption(_ *cobra.Command, args []string, message string, cleanAll
 	return nil
 }
 
+func buildNotFoundError(item, template string, err error) error {
+	if !errors.Is(err, ErrNotFound) {
+		return err
+	}
+
+	version := launchr.Version()
+	return fmt.Errorf(template, item, version.Name)
+}
+
 func login(k Keyring, creds CredentialsItem) error {
 	// Ask for login elements if some elements are empty.
 	var err error
@@ -210,12 +222,9 @@ func login(k Keyring, creds CredentialsItem) error {
 
 func saveKey(k Keyring, item KeyValueItem) error {
 	// Ask for login elements if some elements are empty.
-	var err error
-	if item == (KeyValueItem{}) {
-		err = RequestKeyValueFromTty(&item)
-		if err != nil {
-			return err
-		}
+	err := RequestKeyValueFromTty(&item)
+	if err != nil {
+		return err
 	}
 
 	err = k.AddItem(item)
@@ -304,7 +313,7 @@ func logout(k Keyring, url string, all bool) error {
 		err = k.RemoveByURL(url)
 	}
 	if err != nil {
-		return err
+		return buildNotFoundError(url, templateNotFoundURL, err)
 	}
 
 	return k.Save()
@@ -318,7 +327,7 @@ func removeKey(k Keyring, key string, all bool) error {
 		err = k.RemoveByKey(key)
 	}
 	if err != nil {
-		return err
+		return buildNotFoundError(key, templateNotFoundKey, err)
 	}
 
 	return k.Save()
