@@ -18,9 +18,9 @@ import (
 )
 
 const (
-	getByKeyProc   = "keyring.getByKey"
-	tplNotFoundURL = "%s not found in keyring. Use `%s login` to add it."
-	tplNotFoundKey = "%s not found in keyring. Use `%s set` to add it."
+	getByKeyProc      = "keyring.GetKeyValue"
+	errTplNotFoundURL = "%s not found in keyring. Use `%s login` to add it."
+	errTplNotFoundKey = "%s not found in keyring. Use `%s set` to add it."
 )
 
 func init() {
@@ -47,13 +47,12 @@ func (p *Plugin) OnAppInit(app launchr.App) error {
 	var m action.Manager
 	app.GetService(&m)
 
-	discoverProcessors(m, p.k)
+	AddValueProcessors(m, p.k)
 	return nil
 }
 
-// DiscoverProcessors implements launchr.ProcessorDiscoveryPlugin interface.
-// It's a hook to add new value processors.
-func discoverProcessors(m action.Manager, keyring Keyring) {
+// AddValueProcessors submits new ValueProcessors to action.Manager.
+func AddValueProcessors(m action.Manager, keyring Keyring) {
 	getByKey := func(value interface{}, options map[string]interface{}) (interface{}, error) {
 		return getByKeyProcessor(value, options, keyring)
 	}
@@ -82,7 +81,7 @@ func getByKeyProcessor(value interface{}, options map[string]interface{}, k Keyr
 
 	v, err := k.GetForKey(key)
 	if err != nil {
-		return value, buildNotFoundError(key, tplNotFoundKey, err)
+		return value, buildNotFoundError(key, errTplNotFoundKey, err)
 	}
 
 	return v.Value, nil
@@ -315,7 +314,7 @@ func logout(k Keyring, url string, all bool) error {
 		err = k.RemoveByURL(url)
 	}
 	if err != nil {
-		return buildNotFoundError(url, tplNotFoundURL, err)
+		return buildNotFoundError(url, errTplNotFoundURL, err)
 	}
 
 	return k.Save()
@@ -329,7 +328,7 @@ func removeKey(k Keyring, key string, all bool) error {
 		err = k.RemoveByKey(key)
 	}
 	if err != nil {
-		return buildNotFoundError(key, tplNotFoundKey, err)
+		return buildNotFoundError(key, errTplNotFoundKey, err)
 	}
 
 	return k.Save()
