@@ -206,12 +206,9 @@ func buildNotFoundError(item, template string, err error) error {
 
 func login(k Keyring, creds CredentialsItem) error {
 	// Ask for login elements if some elements are empty.
-	var err error
-	if creds == (CredentialsItem{}) {
-		err = RequestCredentialsFromTty(&creds)
-		if err != nil {
-			return err
-		}
+	err := RequestCredentialsFromTty(&creds)
+	if err != nil {
+		return err
 	}
 
 	err = k.AddItem(creds)
