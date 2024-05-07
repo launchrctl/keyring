@@ -206,12 +206,14 @@ func buildNotFoundError(item, template string, err error) error {
 
 func login(k Keyring, creds CredentialsItem) error {
 	// Ask for login elements if some elements are empty.
-	err := RequestCredentialsFromTty(&creds)
-	if err != nil {
-		return err
+	if creds.isEmpty() {
+		err := RequestCredentialsFromTty(&creds)
+		if err != nil {
+			return err
+		}
 	}
 
-	err = k.AddItem(creds)
+	err := k.AddItem(creds)
 	if err != nil {
 		return err
 	}
@@ -220,12 +222,14 @@ func login(k Keyring, creds CredentialsItem) error {
 
 func saveKey(k Keyring, item KeyValueItem) error {
 	// Ask for login elements if some elements are empty.
-	err := RequestKeyValueFromTty(&item)
-	if err != nil {
-		return err
+	if item.isEmpty() {
+		err := RequestKeyValueFromTty(&item)
+		if err != nil {
+			return err
+		}
 	}
 
-	err = k.AddItem(item)
+	err := k.AddItem(item)
 	if err != nil {
 		return err
 	}
