@@ -1,0 +1,24 @@
+name: Ensure no TTY if user does not need to input anythin
+on:
+  push:
+  workflow_dispatch:
+
+jobs:
+  job1:
+    name: Login
+    runs-on: ubuntu-latest
+    env:
+      TOKEN_JSON: ${{ secrets.TOKEN_JSON }}
+      CREDENTIALS_JSON: ${{ secrets.CREDENTIALS_JSON }}
+    steps:
+    - name: Git checkout
+      uses: actions/checkout@v3
+    - name: Commands
+      run: |
+        echo
+        date
+        pwd
+        whoami
+        make all
+        ls -lah bin/launchr
+        ./bin/launchr login --url=http://***.git --username="***" --password="***" --keyring-passphrase="***"

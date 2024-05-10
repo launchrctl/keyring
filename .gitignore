@@ -8,3 +8,5 @@
 *.gen.go
 dist/
 vendor/
+.plasmactl/
+keyring.yaml.age
