@@ -67,6 +67,8 @@ type DataStore interface {
 	// CleanStorage cleanups storage (credentials or key-value).
 	// Error is returned if the vault couldn't be unlocked.
 	CleanStorage(item SecretItem) error
+	// Exists checks if keyring exists in persistent storage.
+	Exists() bool
 	// Save saves the keyring to the persistent storage.
 	Save() error
 	// Destroy removes the keyring from the persistent storage.
@@ -77,6 +79,7 @@ type DataStore interface {
 type Keyring interface {
 	launchr.Service
 	DataStore
+	ResetStorage()
 }
 
 type keyringService struct {
@@ -95,6 +98,11 @@ func newKeyringService(cfg launchr.Config) Keyring {
 // ServiceInfo implements launchr.Service interface.
 func (k *keyringService) ServiceInfo() launchr.ServiceInfo {
 	return launchr.ServiceInfo{}
+}
+
+// ResetStorage cleans store for subsequent reload.
+func (k *keyringService) ResetStorage() {
+	k.store = nil
 }
 
 func (k *keyringService) defaultStore() (DataStore, error) {
@@ -165,6 +173,15 @@ func (k *keyringService) CleanStorage(item SecretItem) error {
 		return err
 	}
 	return s.CleanStorage(item)
+}
+
+// Exists checks if keyring exists in persistent storage.
+func (k *keyringService) Exists() bool {
+	s, err := k.defaultStore()
+	if err != nil {
+		return false
+	}
+	return s.Exists()
 }
 
 // Save implements DataStore interface. Uses service default store.

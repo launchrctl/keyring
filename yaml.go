@@ -175,6 +175,20 @@ func (s *dataStoreYaml) CleanStorage(item SecretItem) error {
 	return nil
 }
 
+// Exists checks if keyring exists in persistent storage.
+func (s *dataStoreYaml) Exists() bool {
+	ageStorage, ok := s.file.(*ageFile)
+	if !ok {
+		panic("impossible type assertion")
+	}
+
+	info, err := os.Stat(ageStorage.file.fname)
+	if os.IsNotExist(err) {
+		return false
+	}
+	return !info.IsDir()
+}
+
 // Save implements DataStore interface.
 func (s *dataStoreYaml) Save() error {
 	err := s.file.Open(os.O_CREATE|os.O_RDWR|os.O_TRUNC, 0600)
