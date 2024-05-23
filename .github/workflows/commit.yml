@@ -1,24 +1,78 @@
-name: Ensure no TTY if user does not need to input anythin
+name: Commit Workflow
+
 on:
   push:
   workflow_dispatch:
 
 jobs:
-  job1:
-    name: Login
+  no-tty-in-ci:
+    name: Ensure no TTY if user does not need to input anything
     runs-on: ubuntu-latest
-    env:
-      TOKEN_JSON: ${{ secrets.TOKEN_JSON }}
-      CREDENTIALS_JSON: ${{ secrets.CREDENTIALS_JSON }}
+
     steps:
-    - name: Git checkout
-      uses: actions/checkout@v3
-    - name: Commands
-      run: |
-        echo
-        date
-        pwd
-        whoami
-        make all
-        ls -lah bin/launchr
-        ./bin/launchr login --url=http://***.git --username="***" --password="***" --keyring-passphrase="***"
+      - name: Checkout code
+        uses: actions/checkout@v3
+
+      - name: Commands
+        run: |
+          set -x
+          date
+          pwd
+          whoami
+          make deps build
+          ls -lah bin/launchr
+          ./bin/launchr login --url=http://***.git --username="***" --password="***" --keyring-passphrase="***"
+
+  commands-ok:
+    name: Ensure main commands do not fail
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v3
+
+      - name: Commands
+        run: |
+          set -x
+          date
+          pwd
+          whoami
+          make deps build
+          ls -lah bin/launchr
+          ./bin/launchr set vaultpass --value "***" --keyring-passphrase "***"
+          ls -lah .launchr/keyring.yaml.age
+          ./bin/launchr unset vaultpass --keyring-passphrase "***"
+          ls -lah .launchr/keyring.yaml.age
+
+  go-linters:
+    name: Run linters
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v3
+
+      - name: Commands
+        run: |
+          set -x
+          date
+          pwd
+          whoami
+          make lint
+
+  go-tests:
+    name: Run Go tests
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v3
+
+      - name: Commands
+        run: |
+          set -x
+          date
+          pwd
+          whoami
+          make test
+
