@@ -47,9 +47,6 @@ test:
 build:
 	$(info Building launchr...)
 # Application related information available on build time.
-	@echo "APP_VERSION: $(APP_VERSION)"
-	@echo "GIT_BRANCH: $(GIT_BRANCH)"
-	@echo "GIT_HASH: $(GIT_HASH)"
 	$(eval LDFLAGS:=-X '$(GOPKG).name=launchr' -X '$(GOPKG).version=$(APP_VERSION)' $(LDFLAGS_EXTRA))
 	$(eval BIN?=$(LOCAL_BIN)/launchr)
 	go generate ./...
@@ -77,4 +74,4 @@ endif
 .PHONY: .lint
 .lint:
 	$(info Running lint...)
-	$(GOLANGCI_BIN) run --fix ./...
+	$(GOLANGCI_BIN) run --fix --timeout 3m0s ./...
