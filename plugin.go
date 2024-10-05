@@ -63,7 +63,7 @@ func AddValueProcessors(m action.Manager, keyring Keyring) {
 
 func getByKeyProcessor(value interface{}, options map[string]interface{}, k Keyring) (interface{}, error) {
 	val, ok := value.(string)
-	if !ok {
+	if !ok && value != nil {
 		return val, fmt.Errorf(
 			"string type is expected for %q processor. Change value type or remove the processor", getByKeyProc,
 		)

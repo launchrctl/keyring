@@ -7,6 +7,4 @@
 *.gz
 *.gen.go
 dist/
-vendor/
-.plasmactl/
-keyring.yaml.age
+*.age
