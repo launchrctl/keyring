@@ -75,7 +75,7 @@ type DataStore interface {
 	Destroy() error
 }
 
-// Keyring is a launchr.Service providing password store functionality.
+// Keyring is a [launchr.Service] providing password store functionality.
 type Keyring interface {
 	launchr.Service
 	DataStore
@@ -95,7 +95,7 @@ func newKeyringService(cfg launchr.Config) Keyring {
 	}
 }
 
-// ServiceInfo implements launchr.Service interface.
+// ServiceInfo implements [launchr.Service] interface.
 func (k *keyringService) ServiceInfo() launchr.ServiceInfo {
 	return launchr.ServiceInfo{}
 }
@@ -175,7 +175,7 @@ func (k *keyringService) CleanStorage(item SecretItem) error {
 	return s.CleanStorage(item)
 }
 
-// Exists checks if keyring exists in persistent storage.
+// Exists implements DataStore, checks if keyring exists in persistent storage.
 func (k *keyringService) Exists() bool {
 	s, err := k.defaultStore()
 	if err != nil {

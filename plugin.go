@@ -14,7 +14,6 @@ import (
 	"github.com/launchrctl/launchr"
 	"github.com/launchrctl/launchr/pkg/action"
 	"github.com/launchrctl/launchr/pkg/jsonschema"
-	"github.com/launchrctl/launchr/pkg/log"
 )
 
 const (
@@ -27,18 +26,18 @@ func init() {
 	launchr.RegisterPlugin(&Plugin{})
 }
 
-// Plugin is launchr plugin providing keyring.
+// Plugin is [launchr.Plugin] plugin providing a keyring.
 type Plugin struct {
 	k   Keyring
 	cfg launchr.Config
 }
 
-// PluginInfo implements launchr.Plugin interface.
+// PluginInfo implements [launchr.Plugin] interface.
 func (p *Plugin) PluginInfo() launchr.PluginInfo {
 	return launchr.PluginInfo{}
 }
 
-// OnAppInit implements launchr.Plugin interface.
+// OnAppInit implements [launchr.Plugin] interface.
 func (p *Plugin) OnAppInit(app launchr.App) error {
 	app.GetService(&p.cfg)
 	p.k = newKeyringService(p.cfg)
@@ -51,9 +50,9 @@ func (p *Plugin) OnAppInit(app launchr.App) error {
 	return nil
 }
 
-// AddValueProcessors submits new ValueProcessors to action.Manager.
+// AddValueProcessors adds a keyring [action.ValueProcessor] to [action.Manager].
 func AddValueProcessors(m action.Manager, keyring Keyring) {
-	getByKey := func(value interface{}, options map[string]interface{}) (interface{}, error) {
+	getByKey := func(value any, options map[string]any) (any, error) {
 		return getByKeyProcessor(value, options, keyring)
 	}
 
@@ -61,22 +60,24 @@ func AddValueProcessors(m action.Manager, keyring Keyring) {
 	m.AddValueProcessor(getByKeyProc, proc)
 }
 
-func getByKeyProcessor(value interface{}, options map[string]interface{}, k Keyring) (interface{}, error) {
+func getByKeyProcessor(value any, options map[string]any, k Keyring) (any, error) {
 	val, ok := value.(string)
 	if !ok && value != nil {
 		return val, fmt.Errorf(
-			"string type is expected for %q processor. Change value type or remove the processor", getByKeyProc,
+			"string type is expected for %q processor. Change value type or remove the processor",
+			getByKeyProc,
 		)
 	}
 
 	if val != "" {
-		log.Debug("skipping %s processor, value is not empty. Value remains unchanged", getByKeyProc)
+		launchr.Term().Warning().Printfln("Skipping processor %q, value is not empty. Value will remain unchanged", getByKeyProc)
+		launchr.Log().Warn("skipping processor, value is not empty", "processor", getByKeyProc)
 		return value, nil
 	}
 
 	key, ok := options["key"].(string)
 	if !ok {
-		return value, fmt.Errorf("option `key` is required for %q processor", getByKeyProc)
+		return value, fmt.Errorf(`option "key" is required for %q processor`, getByKeyProc)
 	}
 
 	v, err := k.GetForKey(key)
@@ -90,13 +91,13 @@ func getByKeyProcessor(value interface{}, options map[string]interface{}, k Keyr
 
 var passphrase string
 
-// CobraAddCommands implements launchr.CobraPlugin interface to provide keyring functionality.
-func (p *Plugin) CobraAddCommands(rootCmd *cobra.Command) error {
+// CobraAddCommands implements [launchr.CobraPlugin] interface to provide keyring functionality.
+func (p *Plugin) CobraAddCommands(rootCmd *launchr.Command) error {
 	var creds CredentialsItem
-	var loginCmd = &cobra.Command{
+	var loginCmd = &launchr.Command{
 		Use:   "login",
 		Short: "Logs in to services like git, docker, etc.",
-		RunE: func(cmd *cobra.Command, args []string) error {
+		RunE: func(cmd *launchr.Command, args []string) error {
 			// Don't show usage help on a runtime error.
 			cmd.SilenceUsage = true
 			return login(p.k, creds)
@@ -104,13 +105,13 @@ func (p *Plugin) CobraAddCommands(rootCmd *cobra.Command) error {
 	}
 
 	var cleanAll bool
-	var logoutCmd = &cobra.Command{
+	var logoutCmd = &launchr.Command{
 		Use:   "logout [URL]",
 		Short: "Logs out from a service",
-		PreRunE: func(cmd *cobra.Command, args []string) error {
+		PreRunE: func(cmd *launchr.Command, args []string) error {
 			return ensureCleanOption(cmd, args, "please, either provide an URL or use --all flag", cleanAll)
 		},
-		RunE: func(cmd *cobra.Command, args []string) error {
+		RunE: func(cmd *launchr.Command, args []string) error {
 			// Don't show usage help on a runtime error.
 			cmd.SilenceUsage = true
 
@@ -124,11 +125,11 @@ func (p *Plugin) CobraAddCommands(rootCmd *cobra.Command) error {
 	}
 
 	var key KeyValueItem
-	var setKeyCmd = &cobra.Command{
+	var setKeyCmd = &launchr.Command{
 		Use:   "set [key]",
 		Short: "Store new key-value pair to keyring",
 		Args:  cobra.MatchAll(cobra.ExactArgs(1), cobra.OnlyValidArgs),
-		RunE: func(cmd *cobra.Command, args []string) error {
+		RunE: func(cmd *launchr.Command, args []string) error {
 			// Don't show usage help on a runtime error.
 			cmd.SilenceUsage = true
 
@@ -137,13 +138,13 @@ func (p *Plugin) CobraAddCommands(rootCmd *cobra.Command) error {
 		},
 	}
 
-	var unsetKeyCmd = &cobra.Command{
+	var unsetKeyCmd = &launchr.Command{
 		Use:   "unset [key]",
 		Short: "Removes key-value pair from keyring",
-		PreRunE: func(cmd *cobra.Command, args []string) error {
+		PreRunE: func(cmd *launchr.Command, args []string) error {
 			return ensureCleanOption(cmd, args, "please, either target key or use --all flag", cleanAll)
 		},
-		RunE: func(cmd *cobra.Command, args []string) error {
+		RunE: func(cmd *launchr.Command, args []string) error {
 			// Don't show usage help on a runtime error.
 			cmd.SilenceUsage = true
 
@@ -156,10 +157,10 @@ func (p *Plugin) CobraAddCommands(rootCmd *cobra.Command) error {
 		},
 	}
 
-	var purgeCmd = &cobra.Command{
+	var purgeCmd = &launchr.Command{
 		Use:   "purge",
 		Short: "Remove existing keyring file",
-		RunE: func(cmd *cobra.Command, args []string) error {
+		RunE: func(cmd *launchr.Command, args []string) error {
 			// Don't show usage help on a runtime error.
 			cmd.SilenceUsage = true
 			return purge(p.k)
@@ -187,7 +188,7 @@ func (p *Plugin) CobraAddCommands(rootCmd *cobra.Command) error {
 	return nil
 }
 
-func ensureCleanOption(_ *cobra.Command, args []string, message string, cleanAll bool) error {
+func ensureCleanOption(_ *launchr.Command, args []string, message string, cleanAll bool) error {
 	if cleanAll && len(args) > 0 || !cleanAll && len(args) == 0 {
 		return fmt.Errorf(message)
 	}

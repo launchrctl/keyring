@@ -175,7 +175,7 @@ func (s *dataStoreYaml) CleanStorage(item SecretItem) error {
 	return nil
 }
 
-// Exists checks if keyring exists in persistent storage.
+// Exists implements DataStore, checks if keyring exists in persistent storage.
 func (s *dataStoreYaml) Exists() bool {
 	ageStorage, ok := s.file.(*ageFile)
 	if !ok {
