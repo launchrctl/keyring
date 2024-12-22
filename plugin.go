@@ -3,12 +3,13 @@ package keyring
 
 import (
 	"bufio"
+	"context"
+	_ "embed"
 	"errors"
 	"fmt"
 	"os"
 	"strings"
 
-	"github.com/spf13/cobra"
 	"golang.org/x/term"
 
 	"github.com/launchrctl/launchr"
@@ -20,6 +21,21 @@ const (
 	getByKeyProc      = "keyring.GetKeyValue"
 	errTplNotFoundURL = "%s not found in keyring. Use `%s login` to add it."
 	errTplNotFoundKey = "%s not found in keyring. Use `%s set` to add it."
+)
+
+var passphrase string
+
+var (
+	//go:embed action.login.yaml
+	actionLoginYaml []byte
+	//go:embed action.logout.yaml
+	actionLogoutYaml []byte
+	//go:embed action.set.yaml
+	actionSetYaml []byte
+	//go:embed action.unset.yaml
+	actionUnsetYaml []byte
+	//go:embed action.purge.yaml
+	actionPurgeYaml []byte
 )
 
 func init() {
@@ -89,110 +105,73 @@ func getByKeyProcessor(value any, options map[string]any, k Keyring) (any, error
 
 }
 
-var passphrase string
+// DiscoverActions implements [launchr.ActionDiscoveryPlugin] interface.
+func (p *Plugin) DiscoverActions(_ context.Context) ([]*action.Action, error) {
+	// Action login.
+	loginCmd := action.NewFromYAML("keyring:login", actionLoginYaml)
+	loginCmd.SetRuntime(action.NewFnRuntime(func(_ context.Context, a *action.Action) error {
+		input := a.Input()
+		creds := CredentialsItem{
+			Username: input.Opt("username").(string),
+			Password: input.Opt("password").(string),
+			URL:      input.Opt("url").(string),
+		}
+		return login(p.k, creds)
+	}))
+
+	// Action logout.
+	logoutCmd := action.NewFromYAML("keyring:logout", actionLogoutYaml)
+	logoutCmd.SetRuntime(action.NewFnRuntime(func(_ context.Context, a *action.Action) error {
+		input := a.Input()
+		all := input.Opt("all").(bool)
+		if all == input.IsArgChanged("url") {
+			return fmt.Errorf("please, either provide an URL or use --all flag")
+		}
+		url, _ := input.Arg("url").(string)
+		return logout(p.k, url, all)
+	}))
+
+	// Action set.
+	setKeyCmd := action.NewFromYAML("keyring:set", actionSetYaml)
+	setKeyCmd.SetRuntime(action.NewFnRuntime(func(_ context.Context, a *action.Action) error {
+		input := a.Input()
+		key := KeyValueItem{
+			Key: input.Arg("key").(string),
+		}
+		key.Value, _ = input.Arg("value").(string)
+		return saveKey(p.k, key)
+	}))
+
+	// Action unset.
+	unsetKeyCmd := action.NewFromYAML("keyring:unset", actionUnsetYaml)
+	unsetKeyCmd.SetRuntime(action.NewFnRuntime(func(_ context.Context, a *action.Action) error {
+		input := a.Input()
+		all := input.Opt("all").(bool)
+		if all == input.IsArgChanged("key") {
+			return fmt.Errorf("please, either target key or use --all flag")
+		}
+		key, _ := input.Arg("key").(string)
+		return removeKey(p.k, key, all)
+	}))
+
+	// Action purge.
+	purgeCmd := action.NewFromYAML("keyring:purge", actionPurgeYaml)
+	purgeCmd.SetRuntime(action.NewFnRuntime(func(_ context.Context, _ *action.Action) error {
+		return purge(p.k)
+	}))
+
+	return []*action.Action{
+		loginCmd,
+		logoutCmd,
+		setKeyCmd,
+		unsetKeyCmd,
+		purgeCmd,
+	}, nil
+}
 
 // CobraAddCommands implements [launchr.CobraPlugin] interface to provide keyring functionality.
 func (p *Plugin) CobraAddCommands(rootCmd *launchr.Command) error {
-	var creds CredentialsItem
-	var loginCmd = &launchr.Command{
-		Use:   "login",
-		Short: "Logs in to services like git, docker, etc.",
-		RunE: func(cmd *launchr.Command, args []string) error {
-			// Don't show usage help on a runtime error.
-			cmd.SilenceUsage = true
-			return login(p.k, creds)
-		},
-	}
-
-	var cleanAll bool
-	var logoutCmd = &launchr.Command{
-		Use:   "logout [URL]",
-		Short: "Logs out from a service",
-		PreRunE: func(cmd *launchr.Command, args []string) error {
-			return ensureCleanOption(cmd, args, "please, either provide an URL or use --all flag", cleanAll)
-		},
-		RunE: func(cmd *launchr.Command, args []string) error {
-			// Don't show usage help on a runtime error.
-			cmd.SilenceUsage = true
-
-			urlArg := ""
-			if len(args) > 0 {
-				urlArg = args[0]
-			}
-
-			return logout(p.k, urlArg, cleanAll)
-		},
-	}
-
-	var key KeyValueItem
-	var setKeyCmd = &launchr.Command{
-		Use:   "set [key]",
-		Short: "Store new key-value pair to keyring",
-		Args:  cobra.MatchAll(cobra.ExactArgs(1), cobra.OnlyValidArgs),
-		RunE: func(cmd *launchr.Command, args []string) error {
-			// Don't show usage help on a runtime error.
-			cmd.SilenceUsage = true
-
-			key.Key = args[0]
-			return saveKey(p.k, key)
-		},
-	}
-
-	var unsetKeyCmd = &launchr.Command{
-		Use:   "unset [key]",
-		Short: "Removes key-value pair from keyring",
-		PreRunE: func(cmd *launchr.Command, args []string) error {
-			return ensureCleanOption(cmd, args, "please, either target key or use --all flag", cleanAll)
-		},
-		RunE: func(cmd *launchr.Command, args []string) error {
-			// Don't show usage help on a runtime error.
-			cmd.SilenceUsage = true
-
-			keyArg := ""
-			if len(args) > 0 {
-				keyArg = args[0]
-			}
-
-			return removeKey(p.k, keyArg, cleanAll)
-		},
-	}
-
-	var purgeCmd = &launchr.Command{
-		Use:   "purge",
-		Short: "Remove existing keyring file",
-		RunE: func(cmd *launchr.Command, args []string) error {
-			// Don't show usage help on a runtime error.
-			cmd.SilenceUsage = true
-			return purge(p.k)
-		},
-	}
-
-	// Credentials flags
-	loginCmd.Flags().StringVarP(&creds.URL, "url", "", "", "URL")
-	loginCmd.Flags().StringVarP(&creds.Username, "username", "", "", "Username")
-	loginCmd.Flags().StringVarP(&creds.Password, "password", "", "", "Password")
-	// Logout flags
-	logoutCmd.Flags().BoolVarP(&cleanAll, "all", "", false, "Logs out from all services")
-	// Key flags
-	setKeyCmd.Flags().StringVarP(&key.Value, "value", "", "", "Value")
-	// Unset flags
-	unsetKeyCmd.Flags().BoolVarP(&cleanAll, "all", "", false, "Removes all key-pairs")
-	// Passphrase flags
 	rootCmd.PersistentFlags().StringVarP(&passphrase, "keyring-passphrase", "", "", "Passphrase for keyring encryption/decryption")
-	// Command flags.
-	rootCmd.AddCommand(loginCmd)
-	rootCmd.AddCommand(logoutCmd)
-	rootCmd.AddCommand(setKeyCmd)
-	rootCmd.AddCommand(unsetKeyCmd)
-	rootCmd.AddCommand(purgeCmd)
-	return nil
-}
-
-func ensureCleanOption(_ *launchr.Command, args []string, message string, cleanAll bool) error {
-	if cleanAll && len(args) > 0 || !cleanAll && len(args) == 0 {
-		return fmt.Errorf(message)
-	}
-
 	return nil
 }
 

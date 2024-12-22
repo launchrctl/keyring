@@ -1,0 +1,14 @@
+runtime: plugin
+action:
+  title: "Keyring: Set"
+  description: >-
+    Store new key-value pair to keyring
+  arguments:
+    - name: key
+      title: Key
+      description: Key of the value
+      required: true
+      minLength: 1
+    - name: value
+      title: Value
+      description: Value
