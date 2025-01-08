@@ -19,8 +19,8 @@ import (
 
 const (
 	getByKeyProc      = "keyring.GetKeyValue"
-	errTplNotFoundURL = "%s not found in keyring. Use `%s login` to add it."
-	errTplNotFoundKey = "%s not found in keyring. Use `%s set` to add it."
+	errTplNotFoundURL = "%s not found in keyring. Use `%s keyring:login` to add it."
+	errTplNotFoundKey = "%s not found in keyring. Use `%s keyring:set` to add it."
 )
 
 var passphrase string
