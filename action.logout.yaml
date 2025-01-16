@@ -1,0 +1,16 @@
+runtime: plugin
+action:
+  title: "Keyring: Log out"
+  description: >-
+    Logs out from a service
+  arguments:
+    - name: url
+      title: URL
+      description: URL to log out
+      minLength: 1
+  options:
+    - name: all
+      title: All
+      description: Logs out from all services
+      type: boolean
+      default: false

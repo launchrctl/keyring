@@ -67,7 +67,7 @@ func (a AskPassWithTerminal) NewPass() (string, error) {
 func (a AskPassWithTerminal) readPass(prompt string) (string, error) {
 	var bytePassword []byte
 	var err error
-	err = withTerminal(func(in, out *os.File) error {
+	err = withTerminal(func(in, _ *os.File) error {
 		fmt.Print(prompt)
 		bytePassword, err = term.ReadPassword(int(in.Fd()))
 		fmt.Println()

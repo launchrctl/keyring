@@ -1,0 +1,15 @@
+runtime: plugin
+action:
+  title: "Keyring: Log in"
+  description: >-
+    Logs in to services like git, docker, etc.
+  options:
+    - name: url
+      title: URL
+      default: ""
+    - name: username
+      title: Username
+      default: ""
+    - name: password
+      title: Password
+      default: ""

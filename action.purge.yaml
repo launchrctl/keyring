@@ -1,0 +1,4 @@
+runtime: plugin
+action:
+  title: "Keyring: Purge"
+  description: Remove existing keyring file

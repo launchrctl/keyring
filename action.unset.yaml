@@ -1,0 +1,16 @@
+runtime: plugin
+action:
+  title: "Keyring: Unset"
+  description: >-
+    Removes key-value pair from keyring
+  arguments:
+    - name: key
+      title: Key
+      description: Key to delete
+      minLength: 1
+  options:
+    - name: all
+      title: All
+      description: "Removes all key-pairs"
+      type: boolean
+      default: false
