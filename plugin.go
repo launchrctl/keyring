@@ -18,7 +18,7 @@ import (
 )
 
 const (
-	getByKeyProc      = "keyring.GetKeyValue"
+	procGetKeyValue   = "keyring.GetKeyValue"
 	errTplNotFoundURL = "%s not found in keyring. Use `%s keyring:login` to add it."
 	errTplNotFoundKey = "%s not found in keyring. Use `%s keyring:set` to add it."
 )
@@ -62,43 +62,51 @@ func (p *Plugin) OnAppInit(app launchr.App) error {
 	var m action.Manager
 	app.GetService(&m)
 
-	AddValueProcessors(m, p.k)
+	addValueProcessors(m, p.k)
 	return nil
 }
 
-// AddValueProcessors adds a keyring [action.ValueProcessor] to [action.Manager].
-func AddValueProcessors(m action.Manager, keyring Keyring) {
-	getByKey := func(value any, options map[string]any) (any, error) {
-		return getByKeyProcessor(value, options, keyring)
-	}
-
-	proc := action.NewFuncProcessor([]jsonschema.Type{jsonschema.String}, getByKey)
-	m.AddValueProcessor(getByKeyProc, proc)
+// GetKeyValueProcessorOptions is a [action.ValueProcessorOptions] struct.
+type GetKeyValueProcessorOptions struct {
+	Key string `yaml:"key"`
 }
 
-func getByKeyProcessor(value any, options map[string]any, k Keyring) (any, error) {
+// Validate implements [action.ValueProcessorOptions] interface.
+func (o *GetKeyValueProcessorOptions) Validate() error {
+	if o.Key == "" {
+		return fmt.Errorf(`option "key" is required for %q processor`, procGetKeyValue)
+	}
+	return nil
+}
+
+// addValueProcessors adds a keyring [action.ValueProcessor] to [action.Manager].
+func addValueProcessors(m action.Manager, keyring Keyring) {
+	m.AddValueProcessor(procGetKeyValue, action.GenericValueProcessor[*GetKeyValueProcessorOptions]{
+		Types: []jsonschema.Type{jsonschema.String},
+		Fn: func(v any, opts *GetKeyValueProcessorOptions, ctx action.ValueProcessorContext) (any, error) {
+			return processGetByKey(v, opts, ctx, keyring)
+		},
+	})
+}
+
+func processGetByKey(value any, opts *GetKeyValueProcessorOptions, ctx action.ValueProcessorContext, k Keyring) (any, error) {
 	val, ok := value.(string)
 	if !ok && value != nil {
 		return val, fmt.Errorf(
 			"string type is expected for %q processor. Change value type or remove the processor",
-			getByKeyProc,
+			procGetKeyValue,
 		)
 	}
 
-	if val != "" {
-		launchr.Term().Warning().Printfln("Skipping processor %q, value is not empty. Value will remain unchanged", getByKeyProc)
-		launchr.Log().Warn("skipping processor, value is not empty", "processor", getByKeyProc)
+	if ctx.IsChanged {
+		launchr.Term().Warning().Printfln("Skipping processor %q, value is not empty. Value will remain unchanged", procGetKeyValue)
+		launchr.Log().Warn("skipping processor, value is not empty", "processor", procGetKeyValue)
 		return value, nil
 	}
 
-	key, ok := options["key"].(string)
-	if !ok {
-		return value, fmt.Errorf(`option "key" is required for %q processor`, getByKeyProc)
-	}
-
-	v, err := k.GetForKey(key)
+	v, err := k.GetForKey(opts.Key)
 	if err != nil {
-		return value, buildNotFoundError(key, errTplNotFoundKey, err)
+		return value, buildNotFoundError(opts.Key, errTplNotFoundKey, err)
 	}
 
 	return v.Value, nil
