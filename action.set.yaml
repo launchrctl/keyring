@@ -12,3 +12,4 @@ action:
     - name: value
       title: Value
       description: Value
+      default: ""
