@@ -1,7 +1,6 @@
 package keyring
 
 import (
-	"fmt"
 	"testing"
 
 	"github.com/stretchr/testify/require"
@@ -34,6 +33,19 @@ action:
             key: storedsecret
 `
 
+const testActionYamlMissing = `
+runtime: plugin
+action:
+  title: test keyring
+  options:
+    - name: secret
+      default: "mydefault"
+      process:
+        - processor: keyring.GetKeyValue
+          options:
+            key: missing_key
+`
+
 const testActionYamlWrongOptions = `
 runtime: plugin
 action:
@@ -63,12 +75,12 @@ func Test_KeyringProcessor(t *testing.T) {
 	expGiven := action.InputParams{
 		"secret": "my_user_secret",
 	}
-	errOpts := fmt.Errorf("option %q is required for %q processor", "key", procGetKeyValue)
 	tt := []action.TestCaseValueProcessor{
 		{Name: "get keyring keyvalue - no input given", Yaml: testActionYaml, ExpOpts: expConfig},
 		{Name: "get keyring keyvalue - default and no input given", Yaml: testActionYamlWithDefault, ExpOpts: expConfig},
 		{Name: "get keyring keyvalue - input given", Yaml: testActionYaml, Opts: expGiven, ExpOpts: expGiven},
-		{Name: "get keyring keyvalue - wrong options", Yaml: testActionYamlWrongOptions, ErrInit: errOpts},
+		{Name: "get keyring keyvalue - missing key", Yaml: testActionYamlMissing, ErrProc: buildNotFoundError("missing_key", errTplNotFoundKey, ErrNotFound)},
+		{Name: "get keyring keyvalue - wrong options", Yaml: testActionYamlWrongOptions, ErrInit: action.ErrValueProcessorOptionsFieldValidation{Field: "key", Reason: "required"}},
 	}
 	for _, tt := range tt {
 		tt := tt

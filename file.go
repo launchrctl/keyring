@@ -17,7 +17,7 @@ type CredentialsFile interface {
 	// See os.OpenFile for more info about flag and perm arguments.
 	Open(flag int, perm os.FileMode) error
 	// Unlock decrypts a file if supported.
-	Unlock(new bool) error
+	Unlock(bool) error
 	// Lock makes it to request Unlock again.
 	Lock()
 	// Remove deletes a file from FS.
@@ -81,11 +81,11 @@ func (f *ageFile) Open(flag int, perm os.FileMode) (err error) { return f.file.O
 func (f *ageFile) Remove() error                               { return f.file.Remove() }
 func (f *ageFile) Lock()                                       { f.passphrase = "" }
 
-func (f *ageFile) Unlock(new bool) (err error) {
+func (f *ageFile) Unlock(pass bool) (err error) {
 	if f.passphrase != "" {
 		return nil
 	}
-	if new {
+	if pass {
 		f.passphrase, err = f.askPass.NewPass()
 	} else {
 		f.passphrase, err = f.askPass.GetPass()

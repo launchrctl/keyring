@@ -67,46 +67,30 @@ func (p *Plugin) OnAppInit(app launchr.App) error {
 }
 
 // GetKeyValueProcessorOptions is a [action.ValueProcessorOptions] struct.
-type GetKeyValueProcessorOptions struct {
-	Key string `yaml:"key"`
-}
-
-// Validate implements [action.ValueProcessorOptions] interface.
-func (o *GetKeyValueProcessorOptions) Validate() error {
-	if o.Key == "" {
-		return fmt.Errorf(`option "key" is required for %q processor`, procGetKeyValue)
-	}
-	return nil
-}
+type GetKeyValueProcessorOptions = *action.GenericValueProcessorOptions[struct {
+	Key string `yaml:"key" validate:"not-empty"`
+}]
 
 // addValueProcessors adds a keyring [action.ValueProcessor] to [action.Manager].
 func addValueProcessors(m action.Manager, keyring Keyring) {
-	m.AddValueProcessor(procGetKeyValue, action.GenericValueProcessor[*GetKeyValueProcessorOptions]{
+	m.AddValueProcessor(procGetKeyValue, action.GenericValueProcessor[GetKeyValueProcessorOptions]{
 		Types: []jsonschema.Type{jsonschema.String},
-		Fn: func(v any, opts *GetKeyValueProcessorOptions, ctx action.ValueProcessorContext) (any, error) {
+		Fn: func(v any, opts GetKeyValueProcessorOptions, ctx action.ValueProcessorContext) (any, error) {
 			return processGetByKey(v, opts, ctx, keyring)
 		},
 	})
 }
 
-func processGetByKey(value any, opts *GetKeyValueProcessorOptions, ctx action.ValueProcessorContext, k Keyring) (any, error) {
-	val, ok := value.(string)
-	if !ok && value != nil {
-		return val, fmt.Errorf(
-			"string type is expected for %q processor. Change value type or remove the processor",
-			procGetKeyValue,
-		)
-	}
-
+func processGetByKey(value any, opts GetKeyValueProcessorOptions, ctx action.ValueProcessorContext, k Keyring) (any, error) {
 	if ctx.IsChanged {
 		launchr.Term().Warning().Printfln("Skipping processor %q, value is not empty. Value will remain unchanged", procGetKeyValue)
 		launchr.Log().Warn("skipping processor, value is not empty", "processor", procGetKeyValue)
 		return value, nil
 	}
 
-	v, err := k.GetForKey(opts.Key)
+	v, err := k.GetForKey(opts.Fields.Key)
 	if err != nil {
-		return value, buildNotFoundError(opts.Key, errTplNotFoundKey, err)
+		return value, buildNotFoundError(opts.Fields.Key, errTplNotFoundKey, err)
 	}
 
 	return v.Value, nil

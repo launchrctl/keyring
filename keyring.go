@@ -8,6 +8,7 @@ import (
 
 const defaultFileYaml = "keyring.yaml"
 
+// Keyring errors.
 var (
 	ErrNotFound         = errors.New("item not found")            // ErrNotFound if an item was not found
 	ErrEmptyFields      = errors.New("item can't be empty")       // ErrEmptyFields if fields are empty
