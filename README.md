@@ -12,17 +12,44 @@ launchr login
 
 If an interactive shell is not available, credentials may be provided with flags:
 ```shell
+# Input passphrase directly
 launchr login \
   --url=https://your.gitlab.com \
   --username=USER \
   --password=SECRETPASSWORD \
   --keyring-passphrase=YOURPASSHRPASE
+
+# Get passphrase from a file
+launchr login \
+  --url=https://your.gitlab.com \
+  --username=USER \
+  --password=SECRETPASSWORD \
+  --keyring-passphrase-file=/path/to/your/secret
 ```
 
-Flag `--keyring-passphrase` is available for all launchr commands, for example:
+Flags `--keyring-passphrase` and `--keyring-passphrase-file` are available for all launchr commands, for example:
 ```shell
 launchr compose --keyring-passphrase=YOURPASSHRPASE
+launchr compose --keyring-passphrase-file=/path/to/your/secret
 ```
+
+These flags may be passed as environment variables `LAUNCHR_KEYRING_PASSPHRASE` and `LAUNCHR_KEYRING_PASSPHRASE_FILE`:
+```shell
+LAUNCHR_KEYRING_PASSPHRASE=YOURPASSHRPASE launchr compose
+LAUNCHR_KEYRING_PASSPHRASE_FILE=/path/to/your/secret launchr compose
+```
+
+Flags and environment variables are taken in the following priority:
+1. `--keyring-passphrase`
+2. `LAUNCHR_KEYRING_PASSPHRASE`
+3. `--keyring-passphrase-file`
+4. `LAUNCHR_KEYRING_PASSPHRASE_FILE`
+
+**NB:** If the binary is created with a specific app name like `myappname`, the variable name will change accordingly `MYAPPNAME_KEYRING_PASSPHRASE_FILE`.  
+
+Flag `--keyring-passphrase-file` will also set `LAUNCHR_KEYRING_PASSPHRASE_FILE` for subprocesses.  
+These environment variables are inherited in subprocesses.  
+Using `--keyring-passphrase-file` or `LAUNCHR_KEYRING_PASSPHRASE_FILE` is a preferred way to pass the secret because the secret won't be exposed.
 
 To delete an item from the keyring:
 ```shell

@@ -1,0 +1,13 @@
+action:
+  title: test env keyring
+  options:
+    - name: secret
+      process:
+        - processor: keyring.GetKeyValue
+          options:
+            key: storedsecret
+runtime:
+  type: shell
+  script: |
+    env | grep "LAUNCHR"
+    echo "My secret from keyring: {{ .secret }}"

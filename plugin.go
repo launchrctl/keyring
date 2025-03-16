@@ -21,9 +21,15 @@ const (
 	procGetKeyValue   = "keyring.GetKeyValue"
 	errTplNotFoundURL = "%s not found in keyring. Use `%s keyring:login` to add it."
 	errTplNotFoundKey = "%s not found in keyring. Use `%s keyring:set` to add it."
+
+	envVarPassphrase     = launchr.EnvVar("keyring_passphrase")
+	envVarPassphraseFile = launchr.EnvVar("keyring_passphrase_file")
 )
 
-var passphrase string
+var (
+	passphrase     string
+	passphraseFile string
+)
 
 var (
 	//go:embed action.login.yaml
@@ -44,8 +50,9 @@ func init() {
 
 // Plugin is [launchr.Plugin] plugin providing a keyring.
 type Plugin struct {
-	k   Keyring
-	cfg launchr.Config
+	k    Keyring
+	cfg  launchr.Config
+	mask *launchr.SensitiveMask
 }
 
 // PluginInfo implements [launchr.Plugin] interface.
@@ -55,8 +62,9 @@ func (p *Plugin) PluginInfo() launchr.PluginInfo {
 
 // OnAppInit implements [launchr.Plugin] interface.
 func (p *Plugin) OnAppInit(app launchr.App) error {
+	p.mask = app.SensitiveMask()
 	app.GetService(&p.cfg)
-	p.k = newKeyringService(p.cfg)
+	p.k = newKeyringService(p.cfg, p.mask)
 	app.AddService(p.k)
 
 	var m action.Manager
@@ -164,6 +172,20 @@ func (p *Plugin) DiscoverActions(_ context.Context) ([]*action.Action, error) {
 // CobraAddCommands implements [launchr.CobraPlugin] interface to provide keyring functionality.
 func (p *Plugin) CobraAddCommands(rootCmd *launchr.Command) error {
 	rootCmd.PersistentFlags().StringVarP(&passphrase, "keyring-passphrase", "", "", "Passphrase for keyring encryption/decryption")
+	rootCmd.PersistentFlags().StringVarP(&passphraseFile, "keyring-passphrase-file", "", "", "File containing passphrase for keyring encryption/decryption")
+	return nil
+}
+
+// PersistentPreRun implements [launchr.PersistentPreRun] interface.
+func (p *Plugin) PersistentPreRun(_ *launchr.Command, _ []string) error {
+	setPassphrase()
+	// If the passphrase is set with env variables, hide them.
+	if passphraseFile == "" && passphrase != "" {
+		p.mask.AddString(passphrase)
+	}
+	if passphraseFile != "" {
+		p.mask.AddString(passphraseFile)
+	}
 	return nil
 }
 
@@ -309,4 +331,34 @@ func removeKey(k Keyring, key string, all bool) error {
 
 func purge(k Keyring) error {
 	return k.Destroy()
+}
+
+func setPassphrase() {
+	// Return passphrase if it's already provided.
+	if passphrase != "" {
+		return
+	}
+	// Check env variable for the passphrase.
+	passphrase = envVarPassphrase.Get()
+	if passphrase != "" {
+		return
+	}
+	if envPassFile := envVarPassphraseFile.Get(); passphraseFile == "" && envPassFile != "" {
+		passphraseFile = launchr.MustAbs(envPassFile)
+		// Override to absolute path.
+		_ = envVarPassphraseFile.Set(passphraseFile)
+	}
+
+	// Try to read a secret from a file.
+	if passphraseFile != "" {
+		passphraseFile = launchr.MustAbs(passphraseFile)
+		bytes, err := os.ReadFile(passphraseFile) //nolint:gosec // Filepath checked on previous line.
+		if err != nil {
+			return
+		}
+		passphrase = strings.TrimSpace(string(bytes))
+		// Set env variable for subprocesses.
+		_ = envVarPassphraseFile.Set(passphraseFile)
+		return
+	}
 }

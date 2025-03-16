@@ -3,6 +3,7 @@ package keyring
 import (
 	"testing"
 
+	"github.com/launchrctl/launchr"
 	"github.com/stretchr/testify/require"
 
 	"github.com/launchrctl/launchr/pkg/action"
@@ -60,6 +61,7 @@ func Test_KeyringProcessor(t *testing.T) {
 	// Prepare services.
 	k := &keyringService{
 		store: &dataStoreYaml{file: &plainFile{fname: "teststorage.yaml"}},
+		mask:  &launchr.SensitiveMask{},
 	}
 	am := action.NewManager()
 	addValueProcessors(am, k)
