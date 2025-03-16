@@ -22,6 +22,12 @@ jobs:
           make deps build
           ls -lah bin/launchr
           ./bin/launchr keyring:login --url=http://***.git --username="***" --password="***" --keyring-passphrase="***"
+          echo "***" > my_secret
+          ./bin/launchr keyring:login --url=http://***.git --username="***" --password="***" --keyring-passphrase-file="my_secret"
+          
+          LAUNCHR_KEYRING_PASSPHRASE=mypassphrase ./bin/launchr example:shell
+          echo "mypassphrase" > my_secret
+          LAUNCHR_KEYRING_PASSPHRASE_FILE=my_secret ./bin/launchr example:shell
 
   commands-ok:
     name: Ensure main commands do not fail
@@ -39,9 +45,9 @@ jobs:
           whoami
           make deps build
           ls -lah bin/launchr
-          ./bin/launchr keyring:set vaultpass "***" --keyring-passphrase "***"
+          ./bin/launchr keyring:set vaultpass "myvaultpass" --keyring-passphrase "mypassphrase"
           ls -lah .launchr/keyring.yaml.age
-          ./bin/launchr keyring:unset vaultpass --keyring-passphrase "***"
+          ./bin/launchr keyring:unset vaultpass --keyring-passphrase "mypassphrase"
           ls -lah .launchr/keyring.yaml.age
 
   go-linters:

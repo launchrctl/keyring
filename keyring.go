@@ -87,12 +87,14 @@ type keyringService struct {
 	fname string
 	store DataStore
 	cfg   launchr.Config
+	mask  *launchr.SensitiveMask
 }
 
-func newKeyringService(cfg launchr.Config) Keyring {
+func newKeyringService(cfg launchr.Config, mask *launchr.SensitiveMask) Keyring {
 	return &keyringService{
 		fname: cfg.Path(defaultFileYaml),
 		cfg:   cfg,
+		mask:  mask,
 	}
 }
 
@@ -128,7 +130,11 @@ func (k *keyringService) GetForURL(url string) (CredentialsItem, error) {
 	if err != nil {
 		return CredentialsItem{}, err
 	}
-	return s.GetForURL(url)
+	item, err := s.GetForURL(url)
+	if err == nil {
+		k.mask.AddString(item.Password)
+	}
+	return item, err
 }
 
 // GetForKey implements DataStore interface. Uses service default store.
@@ -137,7 +143,11 @@ func (k *keyringService) GetForKey(key string) (KeyValueItem, error) {
 	if err != nil {
 		return KeyValueItem{}, err
 	}
-	return s.GetForKey(key)
+	item, err := s.GetForKey(key)
+	if err == nil {
+		k.mask.AddString(item.Value)
+	}
+	return item, err
 }
 
 // AddItem implements DataStore interface. Uses service default store.
