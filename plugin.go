@@ -32,6 +32,8 @@ var (
 )
 
 var (
+	//go:embed action.list.yaml
+	actionListYaml []byte
 	//go:embed action.login.yaml
 	actionLoginYaml []byte
 	//go:embed action.logout.yaml
@@ -107,6 +109,17 @@ func processGetByKey(value any, opts GetKeyValueProcessorOptions, ctx action.Val
 
 // DiscoverActions implements [launchr.ActionDiscoveryPlugin] interface.
 func (p *Plugin) DiscoverActions(_ context.Context) ([]*action.Action, error) {
+	// Action list.
+	listCmd := action.NewFromYAML("keyring:list", actionListYaml)
+	listCmd.SetRuntime(action.NewFnRuntime(func(_ context.Context, a *action.Action) error {
+		printer := launchr.Term()
+		if rt, ok := a.Runtime().(action.RuntimeTermAware); ok {
+			printer = rt.Term()
+		}
+
+		return list(p.k, printer)
+	}))
+
 	// Action login.
 	loginCmd := action.NewFromYAML("keyring:login", actionLoginYaml)
 	loginCmd.SetRuntime(action.NewFnRuntime(func(_ context.Context, a *action.Action) error {
@@ -161,6 +174,7 @@ func (p *Plugin) DiscoverActions(_ context.Context) ([]*action.Action, error) {
 	}))
 
 	return []*action.Action{
+		listCmd,
 		loginCmd,
 		logoutCmd,
 		setKeyCmd,
@@ -196,6 +210,39 @@ func buildNotFoundError(item, template string, err error) error {
 
 	version := launchr.Version()
 	return fmt.Errorf(template, item, version.Name)
+}
+
+func list(k Keyring, printer *launchr.Terminal) error {
+	urls, err := k.GetUrls()
+	if err != nil {
+		return err
+	}
+
+	keys, err := k.GetKeys()
+	if err != nil {
+		return err
+	}
+
+	// Show both key-value pairs and URLs
+	if len(keys) > 0 {
+		printer.Info().Printfln("Key-value pairs:")
+		for _, key := range keys {
+			printer.Printfln("- %s", key)
+		}
+	}
+
+	if len(urls) > 0 {
+		printer.Info().Printfln("URLs:")
+		for _, url := range urls {
+			printer.Printfln("- %s", url)
+		}
+	}
+
+	if len(urls) == 0 && len(keys) == 0 {
+		printer.Info().Printfln("No items found in keyring")
+	}
+
+	return nil
 }
 
 func login(k Keyring, creds CredentialsItem) error {

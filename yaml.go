@@ -58,6 +58,34 @@ func (s *dataStoreYaml) load() error {
 	return nil
 }
 
+// GetUrls implements DataStore interface.
+func (s *dataStoreYaml) GetUrls() ([]string, error) {
+	var result []string
+	if err := s.load(); err != nil {
+		return result, err
+	}
+
+	for i := 0; i < len(s.data.CredentialStorage); i++ {
+		result = append(result, s.data.CredentialStorage[i].URL)
+	}
+
+	return result, nil
+}
+
+// GetKeys implements DataStore interface.
+func (s *dataStoreYaml) GetKeys() ([]string, error) {
+	var result []string
+	if err := s.load(); err != nil {
+		return result, err
+	}
+
+	for i := 0; i < len(s.data.KeyValueStorage); i++ {
+		result = append(result, s.data.KeyValueStorage[i].Key)
+	}
+
+	return result, nil
+}
+
 // GetForURL implements DataStore interface.
 func (s *dataStoreYaml) GetForURL(url string) (CredentialsItem, error) {
 	if err := s.load(); err != nil {
