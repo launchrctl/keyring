@@ -99,12 +99,36 @@ func processGetByKey(value any, opts GetKeyValueProcessorOptions, ctx action.Val
 	}
 
 	v, err := k.GetForKey(opts.Fields.Key)
-	if err != nil {
-		return value, buildNotFoundError(opts.Fields.Key, errTplNotFoundKey, err)
+	if err == nil {
+		return v.Value, nil
 	}
 
-	return v.Value, nil
+	streams := ctx.Input.Streams()
+	isTerminal := streams != nil && streams.In().IsTerminal()
+	if errors.Is(err, ErrNotFound) && isTerminal {
+		item := KeyValueItem{Key: opts.Fields.Key}
+		err = RequestKeyValueFromTty(&item)
+		if err != nil {
+			return value, err
+		}
 
+		err = k.AddItem(item)
+		if err != nil {
+			return value, err
+		}
+
+		// Ensure keyring storage will be accessible after save.
+		defer k.ResetStorage()
+		err = k.Save()
+		if err != nil {
+			return value, err
+		}
+		launchr.Term().Info().Printfln("Key %q has been added to keyring", item.Key)
+
+		return item.Value, nil
+	}
+
+	return value, buildNotFoundError(opts.Fields.Key, errTplNotFoundKey, err)
 }
 
 // DiscoverActions implements [launchr.ActionDiscoveryPlugin] interface.
@@ -327,7 +351,9 @@ func RequestKeyValueFromTty(item *KeyValueItem) error {
 func keyValueFromTty(item *KeyValueItem, in *os.File, out *os.File) error {
 	reader := bufio.NewReader(in)
 
+	showKeyHelp := true
 	if item.Key == "" {
+		showKeyHelp = false
 		fmt.Fprint(out, "Key: ")
 		username, err := reader.ReadString('\n')
 		if err != nil {
@@ -337,7 +363,12 @@ func keyValueFromTty(item *KeyValueItem, in *os.File, out *os.File) error {
 	}
 
 	if item.Value == "" {
-		fmt.Fprint(out, "Value: ")
+		if showKeyHelp {
+			fmt.Fprint(out, fmt.Sprintf("Enter value of '%s':", item.Key))
+		} else {
+			fmt.Fprint(out, "Value: ")
+		}
+
 		byteValue, err := term.ReadPassword(int(in.Fd()))
 		fmt.Fprint(out, "\n")
 		if err != nil {
