@@ -45,6 +45,10 @@ func (i KeyValueItem) isEmpty() bool {
 
 // DataStore provides password storage functionality.
 type DataStore interface {
+	// GetUrls retrieves a list of stored URLs.
+	GetUrls() ([]string, error)
+	// GetKeys retrieves a list of stored keys.
+	GetKeys() ([]string, error)
 	// GetForURL returns a credentials item by a URL.
 	// Error is returned if either the keyring could not be unlocked
 	// Error ErrNotFound if the credentials were not found.
@@ -122,6 +126,26 @@ func (k *keyringService) defaultStore() (DataStore, error) {
 	// @todo do not encrypt if the passphrase is not provided.
 	k.store = &dataStoreYaml{file: newAgeFile(k.fname, askPass)}
 	return k.store, nil
+}
+
+// GetUrls implements DataStore interface. Uses service default store.
+func (k *keyringService) GetUrls() ([]string, error) {
+	s, err := k.defaultStore()
+	if err != nil {
+		return []string{}, err
+	}
+
+	return s.GetUrls()
+}
+
+// GetKeys implements DataStore interface. Uses service default store.
+func (k *keyringService) GetKeys() ([]string, error) {
+	s, err := k.defaultStore()
+	if err != nil {
+		return []string{}, err
+	}
+
+	return s.GetKeys()
 }
 
 // GetForURL implements DataStore interface. Uses service default store.
