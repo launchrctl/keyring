@@ -364,7 +364,7 @@ func keyValueFromTty(item *KeyValueItem, in *os.File, out *os.File) error {
 
 	if item.Value == "" {
 		if showKeyHelp {
-			fmt.Fprint(out, fmt.Sprintf("Enter value of '%s':", item.Key))
+			fmt.Fprintf(out, "Enter value of '%s':", item.Key)
 		} else {
 			fmt.Fprint(out, "Value: ")
 		}

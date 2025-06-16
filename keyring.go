@@ -156,7 +156,7 @@ func (k *keyringService) GetForURL(url string) (CredentialsItem, error) {
 	}
 	item, err := s.GetForURL(url)
 	if err == nil {
-		k.mask.AddString(item.Password)
+		k.maskItem(item)
 	}
 	return item, err
 }
@@ -169,7 +169,7 @@ func (k *keyringService) GetForKey(key string) (KeyValueItem, error) {
 	}
 	item, err := s.GetForKey(key)
 	if err == nil {
-		k.mask.AddString(item.Value)
+		k.maskItem(item)
 	}
 	return item, err
 }
@@ -180,7 +180,20 @@ func (k *keyringService) AddItem(item SecretItem) error {
 	if err != nil {
 		return err
 	}
+
+	k.maskItem(item)
 	return s.AddItem(item)
+}
+
+// MaskItem masks the item values
+func (k *keyringService) maskItem(item SecretItem) {
+	switch dataItem := item.(type) {
+	case CredentialsItem:
+		k.mask.AddString(dataItem.Password)
+	case KeyValueItem:
+		k.mask.AddString(dataItem.Value)
+	default:
+	}
 }
 
 // RemoveByURL implements DataStore interface. Uses service default store.
