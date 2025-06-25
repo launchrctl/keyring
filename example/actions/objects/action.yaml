@@ -1,0 +1,26 @@
+action:
+  title: Credentials object
+  description: Test credentials processor with object
+  options:
+    - name: creds
+      title: Credentials opt
+      type: object
+      default: {}
+      process:
+        - processor: keyring.GetCredentials
+          options:
+            url_from_key: "url"
+            url_from_config: "my_action.url"
+
+runtime:
+  type: container
+  image: envvars:latest
+  build:
+    context: ./
+  command:
+    - sh
+    - /action/main.sh
+    - "{{ .creds }}"
+    - "{{ .creds.url }}"
+    - "{{ .creds.username }}"
+    - "{{ .creds.password }}"

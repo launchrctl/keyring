@@ -64,7 +64,7 @@ func Test_KeyringProcessor(t *testing.T) {
 		mask:  &launchr.SensitiveMask{},
 	}
 	am := action.NewManager()
-	addValueProcessors(am, k)
+	addValueProcessors(am, k, nil)
 
 	// Prepare test data.
 	expected := "my_secret"
@@ -84,6 +84,59 @@ func Test_KeyringProcessor(t *testing.T) {
 		{Name: "get keyring keyvalue - missing key", Yaml: testActionYamlMissing, ErrProc: buildNotFoundError("missing_key", errTplNotFoundKey, ErrNotFound)},
 		{Name: "get keyring keyvalue - wrong options", Yaml: testActionYamlWrongOptions, ErrInit: action.ErrValueProcessorOptionsFieldValidation{Field: "key", Reason: "required"}},
 	}
+	for _, tt := range tt {
+		tt := tt
+		t.Run(tt.Name, func(t *testing.T) {
+			t.Parallel()
+			tt.Test(t, am)
+		})
+	}
+}
+
+const testCredentialsActionYaml = `
+runtime: plugin
+action:
+  title: test credentials
+  options:
+    - name: credentials
+      type: object
+      process:
+        - processor: keyring.GetCredentials
+          options:
+            url_from_key: "url"
+`
+
+func Test_CredentialsProcessor(t *testing.T) {
+	// Prepare services.
+	k := &keyringService{
+		store: &dataStoreYaml{file: &plainFile{fname: "teststorage.yaml"}},
+		mask:  &launchr.SensitiveMask{},
+	}
+	am := action.NewManager()
+	addValueProcessors(am, k, nil)
+
+	// Prepare test data.
+	expected := map[string]any{
+		"url":      "myurl",
+		"username": "user",
+		"password": "pass",
+	}
+
+	err := k.AddItem(CredentialsItem{URL: "myurl", Username: "user", Password: "pass"})
+	require.NoError(t, err)
+
+	expConfig := action.InputParams{
+		"credentials": expected,
+	}
+	expGiven := action.InputParams{
+		"credentials": map[string]any{
+			"url": "myurl",
+		},
+	}
+	tt := []action.TestCaseValueProcessor{
+		{Name: "get keyring credentials - input with URL given", Yaml: testCredentialsActionYaml, Opts: expGiven, ExpOpts: expConfig},
+	}
+
 	for _, tt := range tt {
 		tt := tt
 		t.Run(tt.Name, func(t *testing.T) {

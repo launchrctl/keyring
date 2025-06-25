@@ -6,7 +6,7 @@ toolchain go1.24.1
 
 require (
 	filippo.io/age v1.2.1
-	github.com/launchrctl/launchr v0.21.0
+	github.com/launchrctl/launchr v0.21.2-0.20250625094547-5e88fd38c550
 	github.com/stretchr/testify v1.10.0
 	golang.org/x/term v0.31.0
 	gopkg.in/yaml.v3 v3.0.1
