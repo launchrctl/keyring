@@ -18,9 +18,10 @@ import (
 )
 
 const (
-	procGetKeyValue   = "keyring.GetKeyValue"
-	errTplNotFoundURL = "%s not found in keyring. Use `%s keyring:login` to add it."
-	errTplNotFoundKey = "%s not found in keyring. Use `%s keyring:set` to add it."
+	procGetKeyValue    = "keyring.GetKeyValue"
+	procGetCredentials = "keyring.GetCredentials" //nolint:gosec // G101: Processor name with masked credentials.
+	errTplNotFoundURL  = "%s not found in keyring. Use `%s keyring:login` to add it."
+	errTplNotFoundKey  = "%s not found in keyring. Use `%s keyring:set` to add it."
 
 	envVarPassphrase     = launchr.EnvVar("keyring_passphrase")
 	envVarPassphraseFile = launchr.EnvVar("keyring_passphrase_file")
@@ -72,7 +73,7 @@ func (p *Plugin) OnAppInit(app launchr.App) error {
 	var m action.Manager
 	app.GetService(&m)
 
-	addValueProcessors(m, p.k)
+	addValueProcessors(m, p.k, p.cfg)
 	return nil
 }
 
@@ -81,12 +82,25 @@ type GetKeyValueProcessorOptions = *action.GenericValueProcessorOptions[struct {
 	Key string `yaml:"key" validate:"not-empty"`
 }]
 
+// GetCredentialsProcessorOptions is a [action.ValueProcessorOptions] struct.
+type GetCredentialsProcessorOptions = *action.GenericValueProcessorOptions[struct {
+	URLFromKey    string `yaml:"url_from_key"`
+	URLFromConfig string `yaml:"url_from_config"`
+}]
+
 // addValueProcessors adds a keyring [action.ValueProcessor] to [action.Manager].
-func addValueProcessors(m action.Manager, keyring Keyring) {
+func addValueProcessors(m action.Manager, keyring Keyring, cfg launchr.Config) {
 	m.AddValueProcessor(procGetKeyValue, action.GenericValueProcessor[GetKeyValueProcessorOptions]{
 		Types: []jsonschema.Type{jsonschema.String},
 		Fn: func(v any, opts GetKeyValueProcessorOptions, ctx action.ValueProcessorContext) (any, error) {
 			return processGetByKey(v, opts, ctx, keyring)
+		},
+	})
+
+	m.AddValueProcessor(procGetCredentials, action.GenericValueProcessor[GetCredentialsProcessorOptions]{
+		Types: []jsonschema.Type{jsonschema.Object},
+		Fn: func(v any, opts GetCredentialsProcessorOptions, ctx action.ValueProcessorContext) (any, error) {
+			return processGetCredentials(v, opts, ctx, keyring, cfg)
 		},
 	})
 }
@@ -129,6 +143,76 @@ func processGetByKey(value any, opts GetKeyValueProcessorOptions, ctx action.Val
 	}
 
 	return value, buildNotFoundError(opts.Fields.Key, errTplNotFoundKey, err)
+}
+
+func processGetCredentials(value any, opts GetCredentialsProcessorOptions, ctx action.ValueProcessorContext, k Keyring, cfg launchr.Config) (any, error) {
+	// Init object
+	if value == nil {
+		value = make(map[string]interface{})
+	}
+
+	m, ok := value.(map[string]interface{})
+	if !ok {
+		return value, fmt.Errorf("%s: invalid value type submitted: %T", procGetCredentials, value)
+	}
+
+	var url string
+	if opts.Fields.URLFromKey != "" {
+		url, ok = m[opts.Fields.URLFromKey].(string)
+		if !ok {
+			launchr.Term().Warning().Printfln("%s: specified key `%s` doesn't exist in passed object", procGetCredentials, opts.Fields.URLFromKey)
+		}
+	}
+
+	if url == "" && opts.Fields.URLFromConfig != "" {
+		err := cfg.Get(opts.Fields.URLFromConfig, &url)
+		if err != nil {
+			return value, err
+		}
+	}
+
+	if url == "" {
+		return value, fmt.Errorf("%s: credentials URL is not provided in processor options or submitted data", procGetCredentials)
+	}
+
+	ci, err := k.GetForURL(url)
+	if err == nil {
+		m["url"] = ci.URL
+		m["username"] = ci.Username
+		m["password"] = ci.Password
+
+		return value, nil
+	}
+
+	streams := ctx.Input.Streams()
+	isTerminal := streams != nil && streams.In().IsTerminal()
+	if errors.Is(err, ErrNotFound) && isTerminal {
+		item := CredentialsItem{URL: url}
+		err = RequestCredentialsFromTty(&item)
+		if err != nil {
+			return value, err
+		}
+
+		err = k.AddItem(item)
+		if err != nil {
+			return value, err
+		}
+
+		// Ensure keyring storage will be accessible after save.
+		defer k.ResetStorage()
+		err = k.Save()
+		if err != nil {
+			return value, err
+		}
+		launchr.Term().Info().Printfln("URL credentials %q has been added to keyring", item.URL)
+
+		m["url"] = ci.URL
+		m["username"] = ci.Username
+		m["password"] = ci.Password
+		return value, nil
+	}
+
+	return value, buildNotFoundError(url, errTplNotFoundURL, err)
 }
 
 // DiscoverActions implements [launchr.ActionDiscoveryPlugin] interface.
