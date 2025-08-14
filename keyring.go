@@ -2,6 +2,7 @@ package keyring
 
 import (
 	"errors"
+	"reflect"
 
 	"github.com/launchrctl/launchr"
 )
@@ -36,11 +37,32 @@ func (i CredentialsItem) isEmpty() bool {
 // KeyValueItem stores key-value pair.
 type KeyValueItem struct {
 	Key   string `yaml:"key"`
-	Value string `yaml:"value"`
+	Value any    `yaml:"value"`
 }
 
 func (i KeyValueItem) isEmpty() bool {
-	return i.Key == "" || i.Value == ""
+	if i.Key == "" {
+		return true
+	}
+
+	if i.Value == nil {
+		return true
+	}
+
+	// Use reflection to check if the value is its zero value
+	v := reflect.ValueOf(i.Value)
+
+	switch v.Kind() {
+	case reflect.String: // also handles type alias for string.
+		return v.String() == ""
+	case reflect.Slice, reflect.Map, reflect.Array:
+		return v.Len() == 0
+	case reflect.Ptr, reflect.Interface, reflect.Chan, reflect.Func:
+		return v.IsNil()
+	default:
+		// For other types, check if it's the zero value
+		return v.IsZero()
+	}
 }
 
 // DataStore provides password storage functionality.
@@ -191,7 +213,9 @@ func (k *keyringService) maskItem(item SecretItem) {
 	case CredentialsItem:
 		k.mask.AddString(dataItem.Password)
 	case KeyValueItem:
-		k.mask.AddString(dataItem.Value)
+		if v, ok := dataItem.Value.(string); ok {
+			k.mask.AddString(v)
+		}
 	default:
 	}
 }
