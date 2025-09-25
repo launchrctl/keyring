@@ -175,7 +175,20 @@ func (p *Plugin) DiscoverActions(_ context.Context) ([]*action.Action, error) {
 		key := KeyValueItem{
 			Key: input.Arg("key").(string),
 		}
-		key.Value, _ = input.Arg("value").(string)
+
+		userValue := input.Arg("value").(string)
+		format := input.Opt("format")
+		if format == "yaml" && userValue != "" {
+			yamlValue, err := parseYamlString(userValue)
+			if err != nil {
+				return fmt.Errorf("failed to parse YAML: %w", err)
+			}
+
+			key.Value = yamlValue
+		} else {
+			key.Value = userValue
+		}
+
 		return saveKey(p.k, key)
 	}))
 

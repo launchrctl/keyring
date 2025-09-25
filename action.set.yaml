@@ -13,3 +13,9 @@ action:
       title: Value
       description: Value
       default: ""
+  options:
+    - name: format
+      title: Value Format
+      description: Format to parse the input value
+      enum: ["string", "yaml"]
+      default: string

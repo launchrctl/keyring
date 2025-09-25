@@ -235,3 +235,9 @@ func (s *dataStoreYaml) Save() error {
 func (s *dataStoreYaml) Destroy() error {
 	return s.file.Remove()
 }
+
+func parseYamlString(value string) (interface{}, error) {
+	var yamlValue interface{}
+	err := yaml.Unmarshal([]byte(value), &yamlValue)
+	return yamlValue, err
+}
