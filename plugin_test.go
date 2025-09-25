@@ -3,9 +3,10 @@ package keyring
 import (
 	"testing"
 
-	"github.com/launchrctl/launchr"
+	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
+	"github.com/launchrctl/launchr"
 	"github.com/launchrctl/launchr/pkg/action"
 )
 
@@ -57,17 +58,45 @@ action:
         - processor: keyring.GetKeyValue
 `
 
+const testActionTplFuncValid = `
+action:
+  title: test keyring
+runtime:
+  type: container
+  image: alpine
+  command:
+    - '{{ keyring.Get "storedsecret" }}'
+`
+
+const testActionTplFuncNotFound = `
+action:
+  title: test keyring
+runtime:
+  type: container
+  image: alpine
+  command:
+    - '{{ keyring.Get "notexist" }}'
+`
+
+const testActionTplFuncBadArgs = `
+action:
+  title: test keyring
+runtime:
+  type: container
+  image: alpine
+  command:
+    - '{{ keyring.Get "storedsecret" "storedsecret" }}'
+`
+
 func Test_KeyringProcessor(t *testing.T) {
 	// Prepare services.
-	k := &keyringService{
-		store: &dataStoreYaml{file: &plainFile{fname: "teststorage.yaml"}},
-		mask:  &launchr.SensitiveMask{},
-	}
+	k := NewService(NewFileStore(nil), nil)
 	am := action.NewManager()
-	addValueProcessors(am, k)
+	tp := action.NewTemplateProcessors()
+	addTemplateProcessors(tp, k)
 
 	// Prepare test data.
-	expected := "my_secret"
+	expected := "my_secret" //nolint:goconst // Duplicated constant is ok for tests.
 	err := k.AddItem(KeyValueItem{Key: "storedsecret", Value: expected})
 	require.NoError(t, err)
 
@@ -88,7 +117,49 @@ func Test_KeyringProcessor(t *testing.T) {
 		tt := tt
 		t.Run(tt.Name, func(t *testing.T) {
 			t.Parallel()
-			tt.Test(t, am)
+			tt.Test(t, am, tp)
+		})
+	}
+}
+
+func Test_KeyringTemplate(t *testing.T) {
+	// Prepare services.
+	k := NewService(NewFileStore(nil), nil)
+	tp := action.NewTemplateProcessors()
+	addTemplateProcessors(tp, k)
+	svc := launchr.NewServiceManager()
+	svc.Add(tp)
+
+	// Prepare test data.
+	expected := "my_secret"
+	err := k.AddItem(KeyValueItem{Key: "storedsecret", Value: expected})
+	require.NoError(t, err)
+
+	type testCase struct {
+		Name string
+		Yaml string
+		Exp  []string
+		Err  string
+	}
+	tt := []testCase{
+		{Name: "valid", Yaml: testActionTplFuncValid, Exp: []string{expected}},
+		{Name: "key not found", Yaml: testActionTplFuncNotFound, Err: "\"notexist\" not found in keyring"},
+		{Name: "wrong call", Yaml: testActionTplFuncBadArgs, Err: "wrong number of args for Get: want 1 got 2"},
+	}
+	for _, tt := range tt {
+		tt := tt
+		t.Run(tt.Name, func(t *testing.T) {
+			t.Parallel()
+			a := action.NewFromYAML(tt.Name, []byte(tt.Yaml))
+			a.SetServices(svc)
+			err := a.EnsureLoaded()
+			if tt.Err != "" {
+				require.ErrorContains(t, err, tt.Err)
+				return
+			}
+			require.NoError(t, err)
+			rdef := a.RuntimeDef()
+			assert.Equal(t, tt.Exp, []string(rdef.Container.Command))
 		})
 	}
 }

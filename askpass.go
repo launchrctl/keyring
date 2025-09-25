@@ -79,11 +79,39 @@ func (a AskPassWithTerminal) readPass(prompt string) (string, error) {
 	return strings.TrimSpace(string(bytePassword)), nil
 }
 
-// AskPassConstFlow implements AskPass and returns constant.
-type AskPassConstFlow string
+// AskPassConst implements AskPass and returns constant.
+type AskPassConst func() string
 
 // GetPass implements AskPass interface.
-func (a AskPassConstFlow) GetPass() (string, error) { return string(a), nil }
+func (a AskPassConst) GetPass() (string, error) { return a(), nil }
 
 // NewPass implements AskPass interface.
-func (a AskPassConstFlow) NewPass() (string, error) { return string(a), nil }
+func (a AskPassConst) NewPass() (string, error) { return a(), nil }
+
+type AskPassFirstAvailable []AskPass
+
+func (a AskPassFirstAvailable) GetPass() (string, error) {
+	for _, a := range a {
+		pass, err := a.GetPass()
+		if err != nil {
+			return "", err
+		}
+		if pass != "" {
+			return pass, nil
+		}
+	}
+	return "", nil
+}
+
+func (a AskPassFirstAvailable) NewPass() (string, error) {
+	for _, a := range a {
+		pass, err := a.NewPass()
+		if err != nil {
+			return "", err
+		}
+		if pass != "" {
+			return pass, nil
+		}
+	}
+	return "", nil
+}

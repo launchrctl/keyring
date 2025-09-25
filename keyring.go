@@ -7,6 +7,14 @@ import (
 	"github.com/launchrctl/launchr"
 )
 
+type StoreType string
+
+const (
+	StoreTypeInMemoryYaml  StoreType = "inmemoryYaml"
+	StoreTypePlainYamlFile StoreType = "plainYaml"
+	StoreTypeAgeYamlFile   StoreType = "ageYaml"
+)
+
 const defaultFileYaml = "keyring.yaml"
 
 // Keyring errors.
@@ -110,18 +118,22 @@ type Keyring interface {
 }
 
 type keyringService struct {
-	fname string
 	store DataStore
-	cfg   launchr.Config
 	mask  *launchr.SensitiveMask
 }
 
-func newKeyringService(cfg launchr.Config, mask *launchr.SensitiveMask) Keyring {
+func NewService(store DataStore, mask *launchr.SensitiveMask) Keyring {
 	return &keyringService{
-		fname: cfg.Path(defaultFileYaml),
-		cfg:   cfg,
+		store: store,
 		mask:  mask,
 	}
+}
+
+func NewFileStore(f CredentialsFile) DataStore {
+	if f == nil {
+		f = nullFile{}
+	}
+	return &dataStoreYaml{file: f}
 }
 
 // ServiceInfo implements [launchr.Service] interface.
@@ -135,18 +147,6 @@ func (k *keyringService) ResetStorage() {
 }
 
 func (k *keyringService) defaultStore() (DataStore, error) {
-	if k.store != nil {
-		return k.store, nil
-	}
-	var askPass AskPass
-	if passphrase != "" {
-		askPass = AskPassConstFlow(passphrase)
-	} else {
-		askPass = AskPassWithTerminal{}
-	}
-	// @todo parse header to know if it's encrypted or not.
-	// @todo do not encrypt if the passphrase is not provided.
-	k.store = &dataStoreYaml{file: newAgeFile(k.fname, askPass)}
 	return k.store, nil
 }
 
@@ -209,6 +209,9 @@ func (k *keyringService) AddItem(item SecretItem) error {
 
 // MaskItem masks the item values
 func (k *keyringService) maskItem(item SecretItem) {
+	if k.mask == nil {
+		return
+	}
 	switch dataItem := item.(type) {
 	case CredentialsItem:
 		k.mask.AddString(dataItem.Password)

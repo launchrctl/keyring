@@ -2,6 +2,7 @@ package keyring
 
 import (
 	"errors"
+	"io"
 	"os"
 	"strings"
 
@@ -44,7 +45,8 @@ func (s *dataStoreYaml) load() error {
 	dec := yaml.NewDecoder(s.file)
 	var strg storage
 	err = dec.Decode(&strg)
-	if err != nil {
+	// Yaml library returns io.EOF for an empty file.
+	if err != nil && err != io.EOF {
 		if strings.Contains(err.Error(), ErrKeyringMalformed.Error()) {
 			// The keyring is malformed, treat it as new.
 			s.file.Lock()

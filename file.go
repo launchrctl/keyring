@@ -18,16 +18,32 @@ type CredentialsFile interface {
 	// See os.OpenFile for more info about flag and perm arguments.
 	Open(flag int, perm os.FileMode) error
 	// Unlock decrypts a file if supported.
-	Unlock(bool) error
+	Unlock(askNew bool) error
 	// Lock makes it to request Unlock again.
 	Lock()
 	// Remove deletes a file from FS.
 	Remove() error
 }
 
+type nullFile struct{}
+
+func (_ nullFile) Open(_ int, _ os.FileMode) (err error) { return nil }
+func (_ nullFile) Unlock(_ bool) error                   { return nil }
+func (_ nullFile) Lock()                                 {}
+func (_ nullFile) Read(_ []byte) (int, error)            { return 0, io.EOF }
+func (_ nullFile) Write(p []byte) (int, error)           { return len(p), nil }
+func (_ nullFile) Close() error                          { return nil }
+func (_ nullFile) Remove() error                         { return nil }
+
 type plainFile struct {
 	fname string
 	file  io.ReadWriteCloser
+}
+
+func NewPlainFile(fname string) CredentialsFile {
+	return &plainFile{
+		fname: fname + ".age",
+	}
 }
 
 func (f *plainFile) Open(flag int, perm os.FileMode) (err error) {
@@ -69,7 +85,7 @@ type ageFile struct {
 	w io.WriteCloser
 }
 
-func newAgeFile(fname string, askPass AskPass) CredentialsFile {
+func NewAgeFile(fname string, askPass AskPass) CredentialsFile {
 	return &ageFile{
 		file: &plainFile{
 			fname: fname + ".age",
@@ -82,11 +98,11 @@ func (f *ageFile) Open(flag int, perm os.FileMode) (err error) { return f.file.O
 func (f *ageFile) Remove() error                               { return f.file.Remove() }
 func (f *ageFile) Lock()                                       { f.passphrase = "" }
 
-func (f *ageFile) Unlock(pass bool) (err error) {
+func (f *ageFile) Unlock(askNew bool) (err error) {
 	if f.passphrase != "" {
 		return nil
 	}
-	if pass {
+	if askNew {
 		f.passphrase, err = f.askPass.NewPass()
 	} else {
 		f.passphrase, err = f.askPass.GetPass()
