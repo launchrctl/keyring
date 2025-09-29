@@ -64,7 +64,7 @@ runtime:
   type: container
   image: alpine
   command:
-    - '{{ keyring.Get "storedsecret" }}'
+    - '{{ keyring "storedsecret" }}'
 `
 
 const testActionTplFuncNotFound = `
@@ -74,7 +74,7 @@ runtime:
   type: container
   image: alpine
   command:
-    - '{{ keyring.Get "notexist" }}'
+    - '{{ keyring "notexist" }}'
 `
 
 const testActionTplFuncBadArgs = `
@@ -84,7 +84,7 @@ runtime:
   type: container
   image: alpine
   command:
-    - '{{ keyring.Get "storedsecret" "storedsecret" }}'
+    - '{{ keyring "storedsecret" "storedsecret" }}'
 `
 
 func Test_KeyringProcessor(t *testing.T) {
@@ -143,7 +143,7 @@ func Test_KeyringTemplate(t *testing.T) {
 	tt := []testCase{
 		{Name: "valid", Yaml: testActionTplFuncValid, Exp: []string{expected}},
 		{Name: "key not found", Yaml: testActionTplFuncNotFound, Err: "\"notexist\" not found in keyring"},
-		{Name: "wrong call", Yaml: testActionTplFuncBadArgs, Err: "wrong number of args for Get: want 1 got 2"},
+		{Name: "wrong call", Yaml: testActionTplFuncBadArgs, Err: "wrong number of args for keyring: want 1 got 2"},
 	}
 	for _, tt := range tt {
 		tt := tt

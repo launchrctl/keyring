@@ -114,7 +114,7 @@ runtime:
     env | grep "LAUNCHR"
     
     # Access keyring value via template (should be masked in output)
-    echo "My secret from keyring: {{ keyring.Get "storedsecret" }}"
+    echo "My secret from keyring: {{ keyring "storedsecret" }}"
 
 # =============================================================================
 # Expected Behavior Summary

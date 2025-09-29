@@ -105,11 +105,8 @@ func addTemplateProcessors(tp *action.TemplateProcessors, keyring Keyring) {
 		},
 	})
 
-	tp.AddTemplateFunc("keyring", func(_ action.TemplateFuncContext) any {
-		return func() *keyringTemplateFunc {
-			return &keyringTemplateFunc{k: keyring}
-		}
-	})
+	ktpl := &keyringTemplateFunc{k: keyring}
+	tp.AddTemplateFunc("keyring", ktpl.Get)
 }
 
 func processGetByKey(value any, opts GetKeyValueProcessorOptions, ctx action.ValueProcessorContext, k Keyring) (any, error) {

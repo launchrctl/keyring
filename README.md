@@ -83,7 +83,7 @@ import (
 func GetPassword(app launchr.App, url string) (keyring.CredentialsItem, error) {
 	// Get the service by type from the app.
 	var k keyring.Keyring
-	app.GetService(k)
+	app.Services().Get(k)
 	// Get by url. Error if the keyring could not be unlocked.
 	// Error keyring.ErrNotFound is returned if an item was not found.
 	creds, err := k.GetForURL(url)
