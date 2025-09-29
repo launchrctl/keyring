@@ -1,0 +1,275 @@
+# =============================================================================
+# Launchr Keyring Passphrase Configuration Test
+# =============================================================================
+#
+# This test validates the Launchr keyring's passphrase handling functionality:
+# 1. Passphrase provided via command-line parameter
+# 2. Passphrase provided via environment variable
+# 3. Passphrase provided via file parameter
+# 4. Passphrase provided via file environment variable
+# 5. Priority order of different passphrase sources
+# 6. Runtime script access to keyring with various passphrase methods
+#
+# Test Focus:
+# - Multiple passphrase input methods
+# - Parameter vs environment variable precedence
+# - File-based passphrase handling
+# - Cross-platform passphrase file paths
+# - Runtime script keyring access
+# =============================================================================
+
+# Test 1: Passphrase via Command-Line Parameter
+# -----------------------------------------------------------------------------
+# Test keyring operations using --keyring-passphrase parameter
+exec launchr --keyring-passphrase 'ParameterPassphrase123!' keyring:set param-test param-value
+
+# Verify keyring file was created with parameter passphrase
+exists .launchr/keyring.yaml.age
+
+# Test retrieval with same parameter passphrase
+exec launchr --keyring-passphrase 'ParameterPassphrase123!' keyring:list
+stdout 'Key-value pairs:.*\n- param-test'
+
+# Clean up for next test
+exec launchr keyring:purge
+! exists .launchr/keyring.yaml.age
+
+# Test 2: Passphrase via Environment Variable
+# -----------------------------------------------------------------------------
+# Test keyring operations using LAUNCHR_KEYRING_PASSPHRASE environment variable
+env LAUNCHR_KEYRING_PASSPHRASE='EnvVarPassphrase456!'
+
+exec launchr keyring:set env-test env-value
+exists .launchr/keyring.yaml.age
+
+exec launchr keyring:list
+stdout 'Key-value pairs:.*\n- env-test'
+
+# Clean up environment and keyring
+exec launchr keyring:purge
+! exists .launchr/keyring.yaml.age
+env LAUNCHR_KEYRING_PASSPHRASE=''
+
+# Test 3: Passphrase via File Parameter
+# -----------------------------------------------------------------------------
+# Create a passphrase file and test using --keyring-passphrase-file parameter
+
+# Test keyring operations with passphrase file parameter
+exec launchr --keyring-passphrase-file passphrase.txt keyring:set file-test file-value
+exists .launchr/keyring.yaml.age
+
+exec launchr --keyring-passphrase-file passphrase.txt keyring:list
+stdout 'Key-value pairs:.*\n- file-test'
+
+# Clean up for next test
+exec launchr --keyring-passphrase-file passphrase.txt keyring:purge
+! exists .launchr/keyring.yaml.age
+
+# Test 4: Passphrase via File Environment Variable
+# -----------------------------------------------------------------------------
+# Test keyring operations using LAUNCHR_KEYRING_PASSPHRASE_FILE environment variable
+
+# Set environment variable to point to passphrase file
+env LAUNCHR_KEYRING_PASSPHRASE_FILE='env-passphrase.txt'
+
+exec launchr keyring:set envfile-test envfile-value
+exists .launchr/keyring.yaml.age
+
+exec launchr keyring:list
+stdout 'Key-value pairs:.*\n- envfile-test'
+
+# Clean up environment and keyring
+exec launchr keyring:purge
+! exists .launchr/keyring.yaml.age
+env LAUNCHR_KEYRING_PASSPHRASE_FILE=''
+
+# Test 5: Precedence Order - Parameter Overrides Environment
+# -----------------------------------------------------------------------------
+# Test that command-line parameter takes precedence over environment variable
+
+env LAUNCHR_KEYRING_PASSPHRASE='EnvPassphrase111!'
+
+# Create keyring with environment passphrase
+exec launchr keyring:set precedence-test precedence-value
+exists .launchr/keyring.yaml.age
+
+# Try to access with different parameter passphrase (should fail)
+! exec launchr --keyring-passphrase 'DifferentPassphrase222!' keyring:list
+
+# Access with correct parameter passphrase (overrides env)
+exec launchr --keyring-passphrase 'EnvPassphrase111!' keyring:list
+stdout 'Key-value pairs:.*\n- precedence-test'
+
+# Clean up
+exec launchr keyring:purge
+! exists .launchr/keyring.yaml.age
+env LAUNCHR_KEYRING_PASSPHRASE=''
+
+# Test 6: Runtime Script Access with Different Passphrase Methods
+# -----------------------------------------------------------------------------
+# Test keyring access from runtime scripts using various passphrase methods
+
+# Setup keyring with environment passphrase for runtime tests
+env LAUNCHR_KEYRING_PASSPHRASE='RuntimePassphrase333!'
+
+exec launchr keyring:set runtime-key runtime-value
+exec launchr keyring:login --url example.com --username testuser --password testpass
+exists .launchr/keyring.yaml.age
+
+# Test runtime script with environment passphrase
+exec launchr test-keyring:runtime-env
+stdout '^Retrieved key: runtime-value$'
+stdout '^Retrieved URL credentials: testuser$'
+
+# Test runtime script with parameter passphrase
+exec launchr --keyring-passphrase 'RuntimePassphrase333!' test-keyring:runtime-param
+stdout '^Retrieved key with param: runtime-value$'
+
+# Test runtime script with file passphrase
+exec launchr --keyring-passphrase-file runtime-passphrase.txt test-keyring:runtime-file
+stdout '^Retrieved key with file: runtime-value$'
+
+# Clean up
+exec launchr keyring:purge
+! exists .launchr/keyring.yaml.age
+env LAUNCHR_KEYRING_PASSPHRASE=''
+
+# Test 7: Cross-Platform File Path Handling
+# -----------------------------------------------------------------------------
+# Test passphrase file handling with different path formats
+
+# Test with relative path
+exec launchr --keyring-passphrase-file config/secret.txt keyring:set cross-platform-test cross-value
+exists .launchr/keyring.yaml.age
+
+exec launchr --keyring-passphrase-file config/secret.txt keyring:list
+stdout 'Key-value pairs:.*\n- cross-platform-test'
+
+# Test with absolute path via environment variable
+env LAUNCHR_KEYRING_PASSPHRASE_FILE=$WORK/config/secret.txt
+exec launchr keyring:list
+stdout 'Key-value pairs:.*\n- cross-platform-test'
+
+# Clean up
+exec launchr keyring:purge
+! exists .launchr/keyring.yaml.age
+env LAUNCHR_KEYRING_PASSPHRASE_FILE=''
+
+# Test 8: Error Handling for Invalid Passphrase Sources
+# -----------------------------------------------------------------------------
+# Test error handling when passphrase sources are invalid
+
+# Test with non-existent passphrase file
+! exec launchr --keyring-passphrase-file non-existent.txt keyring:set error-test error-value
+
+# Test with empty passphrase file
+! exec launchr --keyring-passphrase-file empty-passphrase.txt keyring:set empty-test empty-value
+
+! exists .launchr/keyring.yaml.age
+
+# =============================================================================
+# Test Data Files - Runtime Script Actions
+# =============================================================================
+
+# Runtime Action with Environment Passphrase
+-- test-keyring/actions/runtime-env/action.yaml --
+action:
+  title: keyring runtime test - environment passphrase
+
+runtime:
+  type: shell
+  script: |
+    # Test keyring access with environment passphrase
+    value=$($$CBIN keyring:list | grep runtime-key || echo "not found")
+    if echo "$$value" | grep -q "runtime-key"; then
+      echo "Retrieved key: runtime-value"
+    else
+      echo "Failed to retrieve key"
+      exit 1
+    fi
+    
+    # Test URL credentials access
+    creds=$($$CBIN keyring:list | grep example.com || echo "not found")
+    if echo "$$creds" | grep -q "example.com"; then
+      echo "Retrieved URL credentials: testuser"
+    else
+      echo "Failed to retrieve credentials"
+      exit 1
+    fi
+
+# Runtime Action with Parameter Passphrase
+-- test-keyring/actions/runtime-param/action.yaml --
+action:
+  title: keyring runtime test - parameter passphrase
+
+runtime:
+  type: shell
+  script: |
+    # Test keyring access with parameter passphrase
+    value=$($$CBIN keyring:list | grep runtime-key || echo "not found")
+    if echo "$$value" | grep -q "runtime-key"; then
+      echo "Retrieved key with param: runtime-value"
+    else
+      echo "Failed to retrieve key with param"
+      exit 1
+    fi
+
+# Runtime Action with File Passphrase
+-- test-keyring/actions/runtime-file/action.yaml --
+action:
+  title: keyring runtime test - file passphrase
+
+runtime:
+  type: shell
+  script: |
+    # Test keyring access with file passphrase
+    value=$($$CBIN keyring:list | grep runtime-key || echo "not found")
+    if echo "$$value" | grep -q "runtime-key"; then
+      echo "Retrieved key with file: runtime-value"
+    else
+      echo "Failed to retrieve key with file"
+      exit 1
+    fi
+
+-- empty-passphrase.txt --
+
+-- passphrase.txt --
+FilePassphrase789!
+
+-- env-passphrase.txt --
+EnvFilePassphrase000!
+
+-- runtime-passphrase.txt --
+RuntimePassphrase333!
+
+-- config/secret.txt --
+CrossPlatformPass444!
+
+# =============================================================================
+# Expected Behavior Summary
+# =============================================================================
+#
+# Passphrase Source Priority (highest to lowest):
+# 1. --keyring-passphrase parameter
+# 2. LAUNCHR_KEYRING_PASSPHRASE environment variable
+# 3. --keyring-passphrase-file parameter
+# 4. LAUNCHR_KEYRING_PASSPHRASE_FILE environment variable
+#
+# File Handling:
+# 1. Passphrase files are read and trimmed of whitespace
+# 2. Relative and absolute paths are supported
+# 3. Non-existent files cause errors
+# 4. Empty files result in empty passphrase (unencrypted keyring)
+#
+# Runtime Integration:
+# 1. Runtime scripts can access keyring using any passphrase method
+# 2. Environment variables are inherited by runtime scripts
+# 3. Parameters must be explicitly passed to nested launchr calls
+# 4. File passphrases work with relative paths from runtime context
+#
+# Security Considerations:
+# 1. Passphrases are masked in logs and output
+# 2. File passphrases are more secure than command-line parameters
+# 3. Environment variables are inherited by subprocesses
+# 4. Empty passphrases result in unencrypted storage
+# =============================================================================

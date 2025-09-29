@@ -1,0 +1,160 @@
+# =============================================================================
+# Launchr Keyring TTY Interactive Input Test
+# =============================================================================
+#
+# This test validates the Launchr keyring's interactive terminal (TTY) functionality:
+# 1. Interactive passphrase input for new keyring creation
+# 2. Interactive passphrase input for existing keyring access
+# 3. Passphrase confirmation prompts for new keyrings
+# 4. Security verification (no plaintext secrets in output)
+# 5. Environment variable handling in TTY mode
+# 6. Multiple keyring operations with TTY input
+#
+# Test Focus:
+# - Interactive terminal input simulation
+# - Secure passphrase handling (no echo/display)
+# - New vs existing keyring workflow differences
+# - Cross-platform TTY compatibility
+# - Output security validation
+#
+# Security Considerations:
+# - Passphrases should never appear in stdout/stderr
+# - Environment variable values should not leak to output
+# - TTY input should be handled securely across operations
+# =============================================================================
+
+# TODO: We have functionality to fill missing keys. Current implementation doesn't work well with TestScript.
+# TODO: It's unclear if we can really test that the password is not visible when typing.
+
+# Platform Compatibility Check
+# -----------------------------------------------------------------------------
+# TTY functionality testing requires Unix-like terminal support
+# Windows platforms have different TTY handling that's not compatible with this test
+[windows] skip 'Testing TTY is not supported on Windows'
+
+# Test Setup: Environment Variables for Secure Testing
+# -----------------------------------------------------------------------------
+# Configure test credentials via environment variables to avoid hardcoding
+# These simulate real-world usage where sensitive data comes from environment
+env TEST_KEYRING_PASSPHRASE=MyPassphrase123!
+env TEST_USERNAME=MyLoginUser
+env TEST_PASSWORD=MyLoginPass
+
+# Test 1: New Keyring Creation with TTY Input
+# -----------------------------------------------------------------------------
+# Simulate interactive input for creating a new keyring
+# This test validates the initial keyring setup workflow with passphrase confirmation
+
+# Configure TTY input stream with passphrase + confirmation
+ttyin -stdin tty.new-passphrase
+
+# Execute keyring login command that should trigger new keyring creation
+exec launchr keyring:login --url=http://example.com/project1 --username="$TEST_USERNAME" --password="$TEST_PASSWORD"
+
+# Verify Interactive Prompts: New keyring should prompt for passphrase creation
+stdout '^Enter passphrase for a new keyring:.*'
+stdout '^Confirm passphrase:.*'
+
+# Critical Security Verification: Ensure no plaintext secrets in output
+# Environment variable values should never appear in command output
+! stdout '$TEST_KEYRING_PASSPHRASE'
+! stdout '$TEST_USERNAME'
+! stdout '$TEST_PASSWORD'
+! stderr .
+
+# Test 2: Existing Keyring Access with TTY Input
+# -----------------------------------------------------------------------------
+# Test accessing an existing keyring with interactive passphrase input
+# This validates the unlock workflow for previously created keyrings
+
+# Configure TTY input for existing keyring unlock
+ttyin -stdin tty.existing-passphrase
+
+# Add another URL credential to the existing keyring
+exec launchr keyring:login --url=http://example.com/project2 --username="$TEST_USERNAME" --password="$TEST_PASSWORD"
+
+# Verify Existing Keyring Prompt: Should only ask for unlock passphrase
+stdout '^Enter passphrase to unlock the keyring:.*'
+
+# Security Verification: No sensitive data should appear in output
+! stdout '$TEST_KEYRING_PASSPHRASE'
+! stdout '$TEST_USERNAME'
+! stdout '$TEST_PASSWORD'
+! stderr .
+
+# Test 3: Key-Value Operations with TTY Input
+# -----------------------------------------------------------------------------
+# Test setting key-value pairs with interactive passphrase input
+# This validates TTY functionality for non-URL keyring operations
+
+ttyin -stdin tty.existing-passphrase
+exec launchr keyring:set foo bar
+
+# Verify unlock prompt for key-value operations
+stdout '^Enter passphrase to unlock the keyring:.*'
+
+# Security Check: Key-value data should not appear in prompts
+! stdout '$TEST_KEYRING_PASSPHRASE'
+! stdout 'foo'
+! stdout 'bar'
+! stderr .
+
+# Test 4: Keyring Listing with TTY Input and Content Verification
+# -----------------------------------------------------------------------------
+# Test listing keyring contents with interactive unlock
+# This validates both TTY input and proper data storage/retrieval
+
+ttyin -stdin tty.existing-passphrase
+exec launchr keyring:list
+
+# Verify unlock prompt for list operations
+stdout '^Enter passphrase to unlock the keyring:.*'
+
+# Verify Content Display: After unlock, should show stored data
+stdout 'Key-value pairs:.*\n- foo'
+stdout 'URLs:.*\n- http://example\.com/project1.*\n- http://example\.com/project2'
+
+# Test 5: Fresh Keyring Creation After Purge
+# -----------------------------------------------------------------------------
+# Test creating a new keyring after purging existing data
+# This validates the complete reset and recreation workflow
+
+# Clean up existing keyring data
+exec launchr keyring:purge
+
+# Create new keyring with TTY input (should prompt for new passphrase again)
+ttyin -stdin tty.new-passphrase
+exec launchr keyring:set foo bar
+
+# Verify New Keyring Prompts: Should ask for new passphrase + confirmation
+stdout '^Enter passphrase for a new keyring:.*'
+stdout '^Confirm passphrase:.*'
+
+# Final Security Verification: No sensitive data in output
+! stdout '$TEST_KEYRING_PASSPHRASE'
+! stdout 'foo'
+! stdout 'bar'
+! stderr .
+
+# =============================================================================
+# TTY Input Simulation Files
+# =============================================================================
+#
+# These files simulate user keyboard input for interactive prompts:
+#
+# tty.new-passphrase:
+#   - First line: Initial passphrase entry
+#   - Second line: Passphrase confirmation
+#   Both must match for successful keyring creation
+#
+# tty.existing-passphrase:
+#   - Single line: Passphrase for unlocking existing keyring
+#   Must match the passphrase used during creation
+# =============================================================================
+
+-- ./tty.new-passphrase --
+MyPassphrase123!
+MyPassphrase123!
+
+-- ./tty.existing-passphrase --
+MyPassphrase123!

@@ -7,14 +7,6 @@ import (
 	"github.com/launchrctl/launchr"
 )
 
-type StoreType string
-
-const (
-	StoreTypeInMemoryYaml  StoreType = "inmemoryYaml"
-	StoreTypePlainYamlFile StoreType = "plainYaml"
-	StoreTypeAgeYamlFile   StoreType = "ageYaml"
-)
-
 const defaultFileYaml = "keyring.yaml"
 
 // Keyring errors.
@@ -111,17 +103,14 @@ type DataStore interface {
 }
 
 // Keyring is a [launchr.Service] providing password store functionality.
-type Keyring interface {
-	launchr.Service
-	DataStore
-	ResetStorage()
-}
+type Keyring = *keyringService
 
 type keyringService struct {
 	store DataStore
 	mask  *launchr.SensitiveMask
 }
 
+// NewService creates a new Keyring service.
 func NewService(store DataStore, mask *launchr.SensitiveMask) Keyring {
 	return &keyringService{
 		store: store,
@@ -129,6 +118,7 @@ func NewService(store DataStore, mask *launchr.SensitiveMask) Keyring {
 	}
 }
 
+// NewFileStore creates a DataStore using a file.
 func NewFileStore(f CredentialsFile) DataStore {
 	if f == nil {
 		f = nullFile{}

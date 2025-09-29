@@ -7,7 +7,6 @@ import (
 	"strings"
 
 	"filippo.io/age"
-
 	"github.com/launchrctl/launchr"
 )
 
@@ -27,19 +26,20 @@ type CredentialsFile interface {
 
 type nullFile struct{}
 
-func (_ nullFile) Open(_ int, _ os.FileMode) (err error) { return nil }
-func (_ nullFile) Unlock(_ bool) error                   { return nil }
-func (_ nullFile) Lock()                                 {}
-func (_ nullFile) Read(_ []byte) (int, error)            { return 0, io.EOF }
-func (_ nullFile) Write(p []byte) (int, error)           { return len(p), nil }
-func (_ nullFile) Close() error                          { return nil }
-func (_ nullFile) Remove() error                         { return nil }
+func (nullFile) Open(_ int, _ os.FileMode) (err error) { return nil }
+func (nullFile) Unlock(_ bool) error                   { return nil }
+func (nullFile) Lock()                                 {}
+func (nullFile) Read(_ []byte) (int, error)            { return 0, io.EOF }
+func (nullFile) Write(p []byte) (int, error)           { return len(p), nil }
+func (nullFile) Close() error                          { return nil }
+func (nullFile) Remove() error                         { return nil }
 
 type plainFile struct {
 	fname string
 	file  io.ReadWriteCloser
 }
 
+// NewPlainFile creates a CredentialsFile to open a plain file.
 func NewPlainFile(fname string) CredentialsFile {
 	return &plainFile{
 		fname: fname + ".age",
@@ -85,6 +85,7 @@ type ageFile struct {
 	w io.WriteCloser
 }
 
+// NewAgeFile creates a CredentialsFile to open a file encrypted with age.
 func NewAgeFile(fname string, askPass AskPass) CredentialsFile {
 	return &ageFile{
 		file: &plainFile{

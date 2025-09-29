@@ -221,14 +221,16 @@ func (s *dataStoreYaml) Exists() bool {
 
 // Save implements DataStore interface.
 func (s *dataStoreYaml) Save() error {
+	// Try to unlock first.
+	// If the file has not been created yet, we won't create an empty file on a wrong passphrase.
+	if err := s.file.Unlock(true); err != nil {
+		return err
+	}
 	err := s.file.Open(os.O_CREATE|os.O_RDWR|os.O_TRUNC, 0600)
 	if err != nil {
 		return err
 	}
 	defer s.file.Close()
-	if err = s.file.Unlock(true); err != nil {
-		return err
-	}
 	enc := yaml.NewEncoder(s.file)
 	return enc.Encode(s.data)
 }

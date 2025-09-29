@@ -8,13 +8,13 @@ import (
 	"errors"
 	"fmt"
 	"os"
+	"path/filepath"
 	"strings"
-
-	"golang.org/x/term"
 
 	"github.com/launchrctl/launchr"
 	"github.com/launchrctl/launchr/pkg/action"
 	"github.com/launchrctl/launchr/pkg/jsonschema"
+	"golang.org/x/term"
 )
 
 const (
@@ -25,8 +25,8 @@ const (
 	envVarPassphrase     = launchr.EnvVar("keyring_passphrase")
 	envVarPassphraseFile = launchr.EnvVar("keyring_passphrase_file")
 
-	paramPassphrase     = "keyring-passphrase"
-	paramPassphraseFile = "keyring-passphrase-file"
+	paramPassphrase     = "keyring-passphrase"      //nolint:gosec // It's a parameter name.
+	paramPassphraseFile = "keyring-passphrase-file" //nolint:gosec // It's a parameter name.
 )
 
 var passphrase = &persistentPassphrase{}
@@ -62,16 +62,17 @@ func (p *Plugin) PluginInfo() launchr.PluginInfo {
 
 // OnAppInit implements [launchr.Plugin] interface.
 func (p *Plugin) OnAppInit(app launchr.App) error {
-	mask := app.SensitiveMask()
+	var mask *launchr.SensitiveMask
 	var cfg launchr.Config
-	var tp action.TemplateProcessors
+	var tp *action.TemplateProcessors
 	app.Services().Get(&cfg)
 	app.Services().Get(&tp)
+	app.Services().Get(&mask)
 
 	// Read keyring from a global config directory.
 	// TODO: parse header to know if it's encrypted or not.
 	// TODO: do not encrypt if the passphrase is not provided.
-	passphrase.mask = app.SensitiveMask()
+	passphrase.mask = mask
 	store := NewFileStore(
 		NewAgeFile(
 			cfg.Path(defaultFileYaml),
@@ -96,7 +97,7 @@ type GetKeyValueProcessorOptions = *action.GenericValueProcessorOptions[struct {
 }]
 
 // addTemplateProcessors adds keyring [action.TemplateProcessors].
-func addTemplateProcessors(tp action.TemplateProcessors, keyring Keyring) {
+func addTemplateProcessors(tp *action.TemplateProcessors, keyring Keyring) {
 	tp.AddValueProcessor(procGetKeyValue, action.GenericValueProcessor[GetKeyValueProcessorOptions]{
 		Types: []jsonschema.Type{jsonschema.String},
 		Fn: func(v any, opts GetKeyValueProcessorOptions, ctx action.ValueProcessorContext) (any, error) {
@@ -104,7 +105,7 @@ func addTemplateProcessors(tp action.TemplateProcessors, keyring Keyring) {
 		},
 	})
 
-	tp.AddTemplateFunc("keyring", func(ctx action.TemplateFuncContext) any {
+	tp.AddTemplateFunc("keyring", func(_ action.TemplateFuncContext) any {
 		return func() *keyringTemplateFunc {
 			return &keyringTemplateFunc{k: keyring}
 		}
@@ -257,7 +258,7 @@ func (p *Plugin) CobraAddCommands(rootCmd *launchr.Command) error {
 func (p *Plugin) PersistentPreRun(cmd *launchr.Command, _ []string) error {
 	passphrase.changedPass = cmd.Flags().Changed("keyring-passphrase")
 	passphrase.changedFile = cmd.Flags().Changed("keyring-passphrase-file")
-	return nil
+	return passphrase.init()
 }
 
 func buildNotFoundError(item, template string, err error) error {
@@ -454,9 +455,9 @@ type persistentPassphrase struct {
 	changedFile bool
 }
 
-func (p *persistentPassphrase) init() {
+func (p *persistentPassphrase) init() error {
 	if p.initialized {
-		return
+		return nil
 	}
 
 	defer func() {
@@ -469,34 +470,45 @@ func (p *persistentPassphrase) init() {
 
 	// Return passphrase if it's already provided.
 	if p.changedPass || p.pass != "" {
-		return
+		return nil
 	}
 	// Check env variable for the passphrase.
 	p.pass = envVarPassphrase.Get()
 	if p.pass != "" {
-		return
+		return nil
 	}
 	if envPassFile := envVarPassphraseFile.Get(); p.file == "" && envPassFile != "" {
-		p.file = launchr.MustAbs(envPassFile)
+		p.file = envPassFile
+		if !filepath.IsAbs(p.file) {
+			p.file = launchr.MustAbs(p.file)
+		}
 		// Override to absolute path.
 		_ = envVarPassphraseFile.Set(p.file)
 	}
 
 	// Try to read a secret from a file.
 	if p.file != "" {
-		p.file = launchr.MustAbs(p.file)
+		if !filepath.IsAbs(p.file) {
+			p.file = launchr.MustAbs(p.file)
+		}
 		bytes, err := os.ReadFile(p.file) //nolint:gosec // Filepath checked on previous line.
 		if err != nil {
-			return
+			return err
 		}
 		p.pass = strings.TrimSpace(string(bytes))
+		if p.pass == "" {
+			return fmt.Errorf("passphrase file is empty")
+		}
 		// Set env variable for subprocesses.
 		_ = envVarPassphraseFile.Set(p.file)
-		return
+		return nil
 	}
+	return nil
 }
 
-func (p *persistentPassphrase) get() string {
-	p.init()
-	return p.pass
+func (p *persistentPassphrase) get() (string, error) {
+	if err := p.init(); err != nil {
+		return "", err
+	}
+	return p.pass, nil
 }
