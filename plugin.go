@@ -62,32 +62,11 @@ func (p *Plugin) PluginInfo() launchr.PluginInfo {
 
 // OnAppInit implements [launchr.Plugin] interface.
 func (p *Plugin) OnAppInit(app launchr.App) error {
-	var mask *launchr.SensitiveMask
-	var cfg launchr.Config
 	var tp *action.TemplateProcessors
-	app.Services().Get(&cfg)
 	app.Services().Get(&tp)
-	app.Services().Get(&mask)
-
-	// Read keyring from a global config directory.
-	// TODO: parse header to know if it's encrypted or not.
-	// TODO: do not encrypt if the passphrase is not provided.
-	passphrase.mask = mask
-	store := NewFileStore(
-		NewAgeFile(
-			cfg.Path(defaultFileYaml),
-			AskPassFirstAvailable{
-				AskPassConst(passphrase.get),
-				AskPassWithTerminal{},
-			},
-		),
-	)
-
-	p.k = NewService(store, mask)
-	app.Services().Add(p.k)
-
+	app.Services().Get(&passphrase.mask)
+	app.Services().Get(&p.k)
 	addTemplateProcessors(tp, p.k)
-
 	return nil
 }
 

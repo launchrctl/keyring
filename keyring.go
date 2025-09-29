@@ -131,6 +131,28 @@ func (k *keyringService) ServiceInfo() launchr.ServiceInfo {
 	return launchr.ServiceInfo{}
 }
 
+func (k *keyringService) ServiceCreate(svc *launchr.ServiceManager) launchr.Service {
+	var cfg launchr.Config
+	var mask *launchr.SensitiveMask
+	svc.Get(&cfg)
+	svc.Get(&mask)
+
+	// Read keyring from a global config directory.
+	// TODO: parse header to know if it's encrypted or not.
+	// TODO: do not encrypt if the passphrase is not provided.
+	store := NewFileStore(
+		NewAgeFile(
+			cfg.Path(defaultFileYaml),
+			AskPassFirstAvailable{
+				AskPassConst(passphrase.get),
+				AskPassWithTerminal{},
+			},
+		),
+	)
+
+	return NewService(store, mask)
+}
+
 // ResetStorage cleans store for subsequent reload.
 func (k *keyringService) ResetStorage() {
 	k.store = nil
