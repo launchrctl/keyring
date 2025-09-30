@@ -177,16 +177,13 @@ func (p *Plugin) DiscoverActions(_ context.Context) ([]*action.Action, error) {
 		}
 
 		userValue := input.Arg("value").(string)
-		format := input.Opt("format")
-		if format == "yaml" && userValue != "" {
-			yamlValue, err := parseYamlString(userValue)
-			if err != nil {
-				return fmt.Errorf("failed to parse YAML: %w", err)
-			}
+		format := input.Opt("format").(string)
+		var err error
 
-			key.Value = yamlValue
-		} else {
-			key.Value = userValue
+		// @TODO cover with tests
+		key.Value, err = parseFromString(format, userValue)
+		if err != nil {
+			return fmt.Errorf("failed to parse %s: %w", format, err)
 		}
 
 		return saveKey(p.k, key)

@@ -27,6 +27,75 @@ launchr login \
   --keyring-passphrase-file=/path/to/your/secret
 ```
 
+To add a new key-value pair with an interactive shell:
+```shell
+launchr keyring:set your-key
+```
+
+It's possible to parse a user value and store it as a struct in a keyring. Supported formats are [string, yaml, json]:
+```shell
+launchr keyring:set your-key value
+```
+
+It's possible to parse a user value and store it as a struct in a keyring. Possible formats are [string, yaml, json]:
+```shell
+launchr keyring:set key --format yaml -- "- name: test-1
+- name: test-2"
+launchr keyring:set key --format yaml -- "$(cat file.yaml)"
+launchr keyring:set key --format json -- '[
+  {
+    "name": "test-1"
+  },
+  {
+    "name": "test-2"
+  }
+]'
+launchr keyring:set key --format json -- "$(cat file.json)"
+```
+
+You can dynamically build JSON\YAML wit structures and pass them directly to the command: `jq`
+```shell
+# Define your variables
+TOKEN1="abc123def456"
+NAME1="production-api-key"
+CREATED1="2025-01-15T10:30:00Z"
+
+TOKEN2="xyz789uvw012"
+NAME2="development-token"
+CREATED2="2025-01-15T11:45:00Z"
+EXPIRES2="2025-07-15T11:45:00Z"
+
+launchr keyring:set api-tokens-json --format json -- "$(jq -n \
+  --arg t1 "$TOKEN1" --arg n1 "$NAME1" --arg c1 "$CREATED1" \
+  --arg t2 "$TOKEN2" --arg n2 "$NAME2" --arg c2 "$CREATED2" --arg e2 "$EXPIRES2" \
+  '[
+    {
+      tokenhash: $t1,
+      name: $n1,
+      created: $c1,
+      expires: null
+    },
+    {
+      tokenhash: $t2,
+      name: $n2,
+      created: $c2,
+      expires: $e2
+    }
+  ]')"
+```
+`yq` using same variables:
+```shell
+launchr keyring:set api-tokens-yaml --format yaml -- "$(yq -n \
+  '.[0].tokenhash = env(TOKEN1) |
+   .[0].name = env(NAME1) |
+   .[0].created = env(CREATED1) |
+   .[0].expires = null |
+   .[1].tokenhash = env(TOKEN2) |
+   .[1].name = env(NAME2) |
+   .[1].created = env(CREATED2) |
+   .[1].expires = env(EXPIRES2)')"
+```
+
 Flags `--keyring-passphrase` and `--keyring-passphrase-file` are available for all launchr commands, for example:
 ```shell
 launchr compose --keyring-passphrase=YOURPASSHRPASE
