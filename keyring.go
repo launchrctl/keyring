@@ -11,10 +11,11 @@ const defaultFileYaml = "keyring.yaml"
 
 // Keyring errors.
 var (
-	ErrNotFound         = errors.New("item not found")            // ErrNotFound if an item was not found
-	ErrEmptyFields      = errors.New("item can't be empty")       // ErrEmptyFields if fields are empty
-	ErrEmptyPass        = errors.New("passphrase can't be empty") // ErrEmptyPass if a passphrase is empty
-	ErrKeyringMalformed = errors.New("the keyring is malformed")  // ErrKeyringMalformed when keyring can't be read.
+	ErrNotFound         = errors.New("item not found")                    // ErrNotFound if an item was not found
+	ErrEmptyFields      = errors.New("item can't be empty")               // ErrEmptyFields if fields are empty
+	ErrEmptyPass        = errors.New("passphrase can't be empty")         // ErrEmptyPass if a passphrase is empty
+	ErrKeyringMalformed = errors.New("the keyring is malformed")          // ErrKeyringMalformed when keyring can't be read.
+	ErrIncorrectPass    = errors.New("the given passphrase is incorrect") // ErrIncorrectPass if a passphrase is incorrect
 )
 
 // SecretItem is an interface that represents an item saved in a storage.
@@ -102,19 +103,22 @@ type DataStore interface {
 	Destroy() error
 }
 
+// dataStore is a type alias to embed it as a private property.
+type dataStore = DataStore
+
 // Keyring is a [launchr.Service] providing password store functionality.
 type Keyring = *keyringService
 
 type keyringService struct {
-	store DataStore
-	mask  *launchr.SensitiveMask
+	dataStore
+	mask *launchr.SensitiveMask
 }
 
 // NewService creates a new Keyring service.
 func NewService(store DataStore, mask *launchr.SensitiveMask) Keyring {
 	return &keyringService{
-		store: store,
-		mask:  mask,
+		dataStore: store,
+		mask:      mask,
 	}
 }
 
@@ -142,7 +146,7 @@ func (k *keyringService) ServiceCreate(svc *launchr.ServiceManager) launchr.Serv
 	// TODO: do not encrypt if the passphrase is not provided.
 	store := NewFileStore(
 		NewAgeFile(
-			cfg.Path(defaultFileYaml),
+			cfg.Path(defaultFileYaml+".age"),
 			AskPassFirstAvailable{
 				AskPassConst(passphrase.get),
 				AskPassWithTerminal{},
@@ -153,42 +157,9 @@ func (k *keyringService) ServiceCreate(svc *launchr.ServiceManager) launchr.Serv
 	return NewService(store, mask)
 }
 
-// ResetStorage cleans store for subsequent reload.
-func (k *keyringService) ResetStorage() {
-	k.store = nil
-}
-
-func (k *keyringService) defaultStore() (DataStore, error) {
-	return k.store, nil
-}
-
-// GetUrls implements DataStore interface. Uses service default store.
-func (k *keyringService) GetUrls() ([]string, error) {
-	s, err := k.defaultStore()
-	if err != nil {
-		return []string{}, err
-	}
-
-	return s.GetUrls()
-}
-
-// GetKeys implements DataStore interface. Uses service default store.
-func (k *keyringService) GetKeys() ([]string, error) {
-	s, err := k.defaultStore()
-	if err != nil {
-		return []string{}, err
-	}
-
-	return s.GetKeys()
-}
-
 // GetForURL implements DataStore interface. Uses service default store.
 func (k *keyringService) GetForURL(url string) (CredentialsItem, error) {
-	s, err := k.defaultStore()
-	if err != nil {
-		return CredentialsItem{}, err
-	}
-	item, err := s.GetForURL(url)
+	item, err := k.dataStore.GetForURL(url)
 	if err == nil {
 		k.maskItem(item)
 	}
@@ -197,11 +168,7 @@ func (k *keyringService) GetForURL(url string) (CredentialsItem, error) {
 
 // GetForKey implements DataStore interface. Uses service default store.
 func (k *keyringService) GetForKey(key string) (KeyValueItem, error) {
-	s, err := k.defaultStore()
-	if err != nil {
-		return KeyValueItem{}, err
-	}
-	item, err := s.GetForKey(key)
+	item, err := k.dataStore.GetForKey(key)
 	if err == nil {
 		k.maskItem(item)
 	}
@@ -210,18 +177,15 @@ func (k *keyringService) GetForKey(key string) (KeyValueItem, error) {
 
 // AddItem implements DataStore interface. Uses service default store.
 func (k *keyringService) AddItem(item SecretItem) error {
-	s, err := k.defaultStore()
-	if err != nil {
-		return err
-	}
-
 	k.maskItem(item)
-	return s.AddItem(item)
+	return k.dataStore.AddItem(item)
 }
 
 // MaskItem masks the item values
 func (k *keyringService) maskItem(item SecretItem) {
 	if k.mask == nil {
+		// Mask may be nil in unit tests for simplicity.
+		// Mask is checked in e2e tests.
 		return
 	}
 	switch dataItem := item.(type) {
@@ -233,58 +197,4 @@ func (k *keyringService) maskItem(item SecretItem) {
 		}
 	default:
 	}
-}
-
-// RemoveByURL implements DataStore interface. Uses service default store.
-func (k *keyringService) RemoveByURL(url string) error {
-	s, err := k.defaultStore()
-	if err != nil {
-		return err
-	}
-	return s.RemoveByURL(url)
-}
-
-// RemoveByKey implements DataStore interface. Uses service default store.
-func (k *keyringService) RemoveByKey(key string) error {
-	s, err := k.defaultStore()
-	if err != nil {
-		return err
-	}
-	return s.RemoveByKey(key)
-}
-
-// CleanStorage implements DataStore interface. Uses service default store.
-func (k *keyringService) CleanStorage(item SecretItem) error {
-	s, err := k.defaultStore()
-	if err != nil {
-		return err
-	}
-	return s.CleanStorage(item)
-}
-
-// Exists implements DataStore, checks if keyring exists in persistent storage.
-func (k *keyringService) Exists() bool {
-	s, err := k.defaultStore()
-	if err != nil {
-		return false
-	}
-	return s.Exists()
-}
-
-// Save implements DataStore interface. Uses service default store.
-func (k *keyringService) Save() error {
-	s, err := k.defaultStore()
-	if err != nil {
-		return err
-	}
-	return s.Save()
-}
-
-// Destroy implements DataStore interface. Uses service default store.
-func (k *keyringService) Destroy() error {
-	s, err := k.defaultStore()
-	if err != nil {
-		return err
-	}
-	return s.Destroy()
 }

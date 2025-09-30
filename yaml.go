@@ -6,6 +6,7 @@ import (
 	"os"
 	"strings"
 
+	"github.com/launchrctl/launchr"
 	"gopkg.in/yaml.v3"
 )
 
@@ -47,11 +48,18 @@ func (s *dataStoreYaml) load() error {
 	err = dec.Decode(&strg)
 	// Yaml library returns io.EOF for an empty file.
 	if err != nil && err != io.EOF {
+		// We check directly text because yaml library doesn't wrap errors.
+		// Check if the file has the valid content.
 		if strings.Contains(err.Error(), ErrKeyringMalformed.Error()) {
 			// The keyring is malformed, treat it as new.
+			launchr.Term().Warning().Println("Keyring file is malformed. It will be treated as an empty file.")
 			s.file.Lock()
 			s.loaded = true
 			return nil
+		}
+		// Check if the passphrase was correct.
+		if strings.Contains(err.Error(), ErrIncorrectPass.Error()) {
+			return ErrIncorrectPass
 		}
 		return err
 	}
@@ -207,12 +215,7 @@ func (s *dataStoreYaml) CleanStorage(item SecretItem) error {
 
 // Exists implements DataStore, checks if keyring exists in persistent storage.
 func (s *dataStoreYaml) Exists() bool {
-	ageStorage, ok := s.file.(*ageFile)
-	if !ok {
-		panic("impossible type assertion")
-	}
-
-	info, err := os.Stat(ageStorage.file.fname)
+	info, err := s.file.Stat()
 	if os.IsNotExist(err) {
 		return false
 	}

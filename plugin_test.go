@@ -1,6 +1,7 @@
 package keyring
 
 import (
+	"path/filepath"
 	"testing"
 
 	"github.com/launchrctl/launchr"
@@ -159,6 +160,67 @@ func Test_KeyringTemplate(t *testing.T) {
 			require.NoError(t, err)
 			rdef := a.RuntimeDef()
 			assert.Equal(t, tt.Exp, []string(rdef.Container.Command))
+		})
+	}
+}
+
+func Test_KeyringSave(t *testing.T) {
+	type testCase struct {
+		name      string
+		dataStore func(string) DataStore
+	}
+	tt := []testCase{
+		{"plain file", func(dir string) DataStore {
+			return NewFileStore(
+				NewPlainFile(filepath.Join(dir, defaultFileYaml)),
+			)
+		}},
+		{"age file", func(dir string) DataStore {
+			testPass := persistentPassphrase{pass: "pass"}
+			return NewFileStore(
+				NewAgeFile(
+					filepath.Join(dir, defaultFileYaml+".age"),
+					AskPassConst(testPass.get),
+				),
+			)
+		}},
+	}
+	for _, tt := range tt {
+		tt := tt
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+			// Init test keyring service.
+			dir := t.TempDir()
+			keyring := NewService(tt.dataStore(dir), nil)
+
+			// Add an item and save.
+			err := keyring.AddItem(KeyValueItem{Key: "foo", Value: "bar"})
+			require.NoError(t, err)
+			err = keyring.Save()
+			require.NoError(t, err)
+
+			// Try adding another item after save.
+			err = keyring.AddItem(KeyValueItem{Key: "bar", Value: "buz"})
+			require.NoError(t, err)
+			err = keyring.Save()
+			require.NoError(t, err)
+
+			// Check the content of the keyring.
+			assertKeyringVals := func() {
+				val1, err := keyring.GetForKey("foo")
+				assert.NoError(t, err)
+				assert.Equal(t, "bar", val1.Value.(string))
+
+				val2, err := keyring.GetForKey("bar")
+				assert.NoError(t, err)
+				assert.Equal(t, "buz", val2.Value.(string))
+			}
+			assertKeyringVals()
+
+			// Try to recreate a service and make sure that the content is definitely loaded from the disk.
+			keyring = NewService(tt.dataStore(dir), nil)
+			// Check the content of the keyring.
+			assertKeyringVals()
 		})
 	}
 }

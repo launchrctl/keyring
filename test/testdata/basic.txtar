@@ -90,3 +90,23 @@ exec launchr keyring:purge
 # Final Verification: Ensure complete cleanup
 # Verify that the encrypted keyring file no longer exists
 ! exists .launchr/keyring.yaml.age
+
+# Test 7: Malformed Keyring File Handling
+# -----------------------------------------------------------------------------
+# Test the application's behavior when encountering a corrupted/malformed keyring file
+# This ensures graceful error handling and fallback to empty keyring behavior
+cp broken-keyring.yaml.age .launchr/keyring.yaml.age
+exec launchr keyring:set foo bar
+stdout 'Keyring file is malformed\. It will be treated as an empty file\.'
+
+# Test 8: Incorrect Passphrase Handling
+# -----------------------------------------------------------------------------
+# Test the application's behavior when an incorrect passphrase is provided
+# This ensures proper authentication and error messaging for keyring access
+! exec launchr --keyring-passphrase=123456 keyring:list
+stdout 'the given passphrase is incorrect'
+
+# Test Data: Simulated corrupted keyring file
+# This file contains plain text instead of expected encrypted age content
+-- broken-keyring.yaml.age --
+this is a plain text when an age content is expected

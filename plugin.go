@@ -114,8 +114,6 @@ func processGetByKey(value any, opts GetKeyValueProcessorOptions, ctx action.Val
 			return value, err
 		}
 
-		// Ensure keyring storage will be accessible after save.
-		defer k.ResetStorage()
 		err = k.Save()
 		if err != nil {
 			return value, err
@@ -438,7 +436,7 @@ func (p *persistentPassphrase) init() error {
 
 	defer func() {
 		// If the passphrase is set with user input or env variable, hide it.
-		if p.file == "" && p.pass != "" {
+		if p.mask != nil && p.file == "" && p.pass != "" {
 			p.mask.AddString(p.pass)
 		}
 		p.initialized = true
