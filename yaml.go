@@ -1,6 +1,7 @@
 package keyring
 
 import (
+	"encoding/json"
 	"errors"
 	"os"
 	"strings"
@@ -234,4 +235,23 @@ func (s *dataStoreYaml) Save() error {
 // Destroy implements DataStore interface.
 func (s *dataStoreYaml) Destroy() error {
 	return s.file.Remove()
+}
+
+func parseFromString(format, value string) (interface{}, error) {
+	if format == "string" || value == "" {
+		return value, nil
+	}
+
+	var parsed interface{}
+	var err error
+	switch format {
+	case "json":
+		err = json.Unmarshal([]byte(value), &parsed)
+	case "yaml":
+		err = yaml.Unmarshal([]byte(value), &parsed)
+	default:
+		panic("unsupported format: " + format)
+	}
+
+	return parsed, err
 }

@@ -175,7 +175,17 @@ func (p *Plugin) DiscoverActions(_ context.Context) ([]*action.Action, error) {
 		key := KeyValueItem{
 			Key: input.Arg("key").(string),
 		}
-		key.Value, _ = input.Arg("value").(string)
+
+		userValue := input.Arg("value").(string)
+		format := input.Opt("format").(string)
+		var err error
+
+		// @TODO cover with tests
+		key.Value, err = parseFromString(format, userValue)
+		if err != nil {
+			return fmt.Errorf("failed to parse %s: %w", format, err)
+		}
+
 		return saveKey(p.k, key)
 	}))
 
