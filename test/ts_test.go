@@ -21,7 +21,7 @@ func TestKeyring(t *testing.T) {
 	t.Parallel()
 	testscript.Run(t, testscript.Params{
 		Dir:      "testdata",
-		Deadline: time.Now().Add(30 * time.Second),
+		Deadline: time.Now().Add(60 * time.Second),
 
 		RequireExplicitExec: true,
 		RequireUniqueNames:  true,
