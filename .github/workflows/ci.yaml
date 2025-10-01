@@ -30,5 +30,3 @@ jobs:
   tests:
     name: 🛡 Testing Suite
     uses: launchrctl/launchr/.github/workflows/test-suite.yaml@main
-    with:
-      skip-platforms: 'macos-amd64' # tty test is failing on macos-amd64 runner for some reason, not a priority
