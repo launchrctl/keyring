@@ -1,0 +1,112 @@
+# =============================================================================
+# Launchr Keyring Basic Functionality Test
+# =============================================================================
+#
+# This test validates the fundamental keyring operations of Launchr:
+# 1. Setting and retrieving key-value pairs in the keyring
+# 2. Storing and managing URL-based login credentials
+# 3. Keyring file encryption with passphrase protection
+# 4. Listing stored keyring entries (keys and URLs)
+# 5. Removing individual entries from the keyring
+# 6. Complete keyring cleanup and purge operations
+#
+# Test Focus:
+# - Basic CRUD operations on keyring entries
+# - Encrypted storage verification (no plaintext secrets)
+# - Multi-type storage (key-value pairs and URL credentials)
+# - Entry management and cleanup workflows
+# =============================================================================
+
+# Setup: Configure keyring passphrase via environment variable
+# This passphrase will be used to encrypt/decrypt the keyring file
+env LAUNCHR_KEYRING_PASSPHRASE='MySecretPassphrase123!'
+
+# Initial State Verification: Ensure no existing keyring file
+# The keyring should not exist before we start our operations
+! exists .launchr/keyring.yaml
+
+# Test 1: Basic Key-Value Storage Operations
+# -----------------------------------------------------------------------------
+# Store simple key-value pairs in the keyring
+exec launchr keyring:set foo bar
+exec launchr keyring:set bar buz
+
+# Test 2: URL-Based Credential Storage
+# -----------------------------------------------------------------------------
+# Store login credentials for specific URLs (useful for web authentication)
+exec launchr keyring:login --url example1.com --username foo --password bar
+exec launchr keyring:login --url example2.com --username foo --password bar
+
+# Security Verification: Ensure encrypted storage
+# -----------------------------------------------------------------------------
+# Verify that the plaintext keyring file doesn't exist (security requirement)
+! exists .launchr/keyring.yaml
+
+# Verify that the encrypted keyring file was created
+exists .launchr/keyring.yaml.age
+
+# Critical Security Check: Verify no plaintext secrets in encrypted file
+# This ensures that sensitive data (URLs, usernames, passwords, keys) are properly encrypted
+! grep '(example1\.com|example2\.com|foo|bar|buz)' .launchr/keyring.yaml.age
+
+# Test 3: Keyring Content Listing and Verification
+# -----------------------------------------------------------------------------
+# List all stored entries to verify they were saved correctly
+exec launchr keyring:list
+
+# Verify key-value pairs are listed correctly
+stdout 'Key-value pairs:.*\n- foo.*\n- bar'
+
+# Verify URL credentials are listed correctly
+stdout 'URLs:.*\n- example1\.com.*\n- example2\.com'
+
+# Test 4: Individual Entry Removal Operations
+# -----------------------------------------------------------------------------
+# Remove a specific key-value pair from the keyring
+exec launchr keyring:unset bar
+
+# Remove URL credentials for a specific site
+exec launchr keyring:logout example2.com
+
+# Verify encrypted keyring file still exists after partial removal
+exists .launchr/keyring.yaml.age
+
+# Test 5: Verification of Partial Cleanup
+# -----------------------------------------------------------------------------
+# Verify that only the remaining entries are listed
+exec launchr keyring:list
+
+# Verify only 'foo' key remains (bar was removed)
+stdout 'Key-value pairs:.*\n- foo'
+
+# Verify only example1.com URL remains (example2.com was removed)
+stdout 'URLs:.*\n- example1\.com'
+
+# Test 6: Complete Keyring Cleanup
+# -----------------------------------------------------------------------------
+# Remove all keyring data and the encrypted file
+exec launchr keyring:purge
+
+# Final Verification: Ensure complete cleanup
+# Verify that the encrypted keyring file no longer exists
+! exists .launchr/keyring.yaml.age
+
+# Test 7: Malformed Keyring File Handling
+# -----------------------------------------------------------------------------
+# Test the application's behavior when encountering a corrupted/malformed keyring file
+# This ensures graceful error handling and fallback to empty keyring behavior
+cp broken-keyring.yaml.age .launchr/keyring.yaml.age
+exec launchr keyring:set foo bar
+stdout 'Keyring file is malformed\. It will be treated as an empty file\.'
+
+# Test 8: Incorrect Passphrase Handling
+# -----------------------------------------------------------------------------
+# Test the application's behavior when an incorrect passphrase is provided
+# This ensures proper authentication and error messaging for keyring access
+! exec launchr --keyring-passphrase=123456 keyring:list
+stdout 'the given passphrase is incorrect'
+
+# Test Data: Simulated corrupted keyring file
+# This file contains plain text instead of expected encrypted age content
+-- broken-keyring.yaml.age --
+this is a plain text when an age content is expected

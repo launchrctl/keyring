@@ -1,0 +1,146 @@
+# =============================================================================
+# Launchr Keyring Sensitive Data Protection Test
+# =============================================================================
+#
+# This test validates the Launchr keyring's sensitive data protection mechanisms:
+# 1. Environment variable masking in command output and logs
+# 2. Keyring content masking when displayed in runtime scripts
+# 3. Passphrase protection across different input methods (env var vs file)
+# 4. Cross-process sensitive data handling (parent to subprocess)
+# 5. Template rendering security for keyring values
+# 6. Multi-level script execution with consistent data protection
+#
+# Test Focus:
+# - Sensitive data never appears in plaintext in output
+# - Consistent masking across environment variables and keyring values
+# - Protection maintained through subprocess execution chains
+# - Template system respects sensitive data masking rules
+# - Different passphrase input methods maintain same security level
+#
+# Security Requirements:
+# - Passphrases must be masked as "****" in all output
+# - Keyring values must be masked as "****" when displayed
+# - Environment variable names can be shown, but not values
+# - Subprocess inheritance maintains protection levels
+# =============================================================================
+
+# Test 1: Environment Variable Passphrase with Sensitive Data Protection
+# -----------------------------------------------------------------------------
+# Test keyring operations using environment variable passphrase
+# Validate that sensitive data is properly masked in all output contexts
+
+# Configure keyring passphrase via environment variable
+env LAUNCHR_KEYRING_PASSPHRASE=MySecretPassphrase123!
+
+# Execute shell action that displays environment and uses keyring
+exec launchr example:shell
+
+# Critical Security Checks: Verify no plaintext sensitive data in output
+# Passphrase value should never appear in plaintext
+! stdout $LAUNCHR_KEYRING_PASSPHRASE
+# Keyring stored values should never appear in plaintext
+! stdout my_secret
+
+# Verify Proper Masking: Sensitive data should be masked as "****"
+# Environment variable should be shown as masked (appears twice in output)
+stdout -count=2 'LAUNCHR_KEYRING_PASSPHRASE=\*\*\*\*'
+# Keyring template output should be masked
+stdout 'My secret from keyring: \*\*\*\*'
+
+# Test Cleanup: Remove keyring data and clear environment
+exec launchr keyring:purge
+env LAUNCHR_KEYRING_PASSPHRASE=''
+
+# Test 2: File-Based Passphrase with Sensitive Data Protection
+# -----------------------------------------------------------------------------
+# Test keyring operations using file-based passphrase configuration
+# Verify consistent protection across different passphrase input methods
+
+# Configure keyring passphrase via file reference
+env LAUNCHR_KEYRING_PASSPHRASE_FILE=passphrase.txt
+
+# Execute same shell action with file-based passphrase
+exec launchr example:shell
+
+# Security Verification: No plaintext passphrase content from file
+! stdout 'MySecretPassphrase123!'
+# No plaintext keyring values
+! stdout my_secret
+
+# Verify File Reference Display: File path can be shown, but not content
+# Environment variable should show file path (appears twice)
+stdout -count=2 'LAUNCHR_KEYRING_PASSPHRASE_FILE=.*passphrase\.txt'
+# Keyring template output should still be masked
+stdout 'My secret from keyring: \*\*\*\*'
+
+# =============================================================================
+# Test Data Files - Passphrase and Runtime Actions
+# =============================================================================
+
+# Passphrase File: Contains the actual passphrase for file-based authentication
+# This file simulates external passphrase storage for enhanced security
+-- passphrase.txt --
+MySecretPassphrase123!
+
+# Primary Shell Action: Demonstrates environment inspection and keyring usage
+# This action tests both environment variable display and keyring operations
+-- example/actions/shell/action.yaml --
+action:
+  title: test env keyring
+
+runtime:
+  type: shell
+  script: |
+    # Display environment variables (should show masked sensitive values)
+    env | grep "LAUNCHR"
+    
+    # Store a secret value in the keyring for testing
+    $$CBIN keyring:set storedsecret "my_secret"
+    
+    # Call subprocess to test cross-process sensitive data handling
+    echo "Subprocess env:"
+    $$CBIN example:subshell
+
+# Subprocess Shell Action: Tests inherited environment and keyring template access
+# This action validates that sensitive data protection is maintained across process boundaries
+-- example/actions/subshell/action.yaml --
+action:
+  title: test env keyring
+
+runtime:
+  type: shell
+  script: |
+    # Display inherited environment (should maintain masking from parent)
+    env | grep "LAUNCHR"
+    
+    # Access keyring value via template (should be masked in output)
+    echo "My secret from keyring: {{ keyring "storedsecret" }}"
+
+# =============================================================================
+# Expected Behavior Summary
+# =============================================================================
+#
+# Environment Variable Protection:
+# 1. LAUNCHR_KEYRING_PASSPHRASE values are masked as "****"
+# 2. LAUNCHR_KEYRING_PASSPHRASE_FILE shows file path but not content
+# 3. Environment variable names are visible, values are protected
+# 4. Protection is maintained across subprocess calls
+#
+# Keyring Value Protection:
+# 1. Template rendering masks sensitive values as "****"
+# 2. Direct keyring values never appear in plaintext in logs
+# 3. Storage operations don't leak values to output
+# 4. Cross-process template access maintains masking
+#
+# Multi-Process Security:
+# 1. Parent process masking rules inherited by subprocesses
+# 2. Environment variable protection consistent across call chain
+# 3. Keyring access security maintained regardless of call depth
+# 4. Template system respects masking in all execution contexts
+#
+# Passphrase Input Method Independence:
+# 1. Same protection level regardless of passphrase source
+# 2. Environment variable vs file-based input both secure
+# 3. Consistent masking behavior across input methods
+# 4. File content protection (path shown, content masked)
+# =============================================================================

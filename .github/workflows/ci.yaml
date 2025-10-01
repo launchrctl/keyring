@@ -1,0 +1,32 @@
+name: 🧪 Code Coverage & Testing
+
+on:
+  push:
+    branches:
+      - 'main'
+    paths-ignore:
+      - 'README.md'
+      - 'LICENSE'
+      - '.gitignore'
+      - '.goreleaser.yaml'
+      - 'example/**'
+      - 'docs/**'
+  pull_request:
+    branches:
+      - 'main'
+    paths-ignore:
+      - 'README.md'
+      - 'LICENSE'
+      - '.gitignore'
+      - '.goreleaser.yaml'
+      - 'example/**'
+      - 'docs/**'
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  tests:
+    name: 🛡 Testing Suite
+    uses: launchrctl/launchr/.github/workflows/test-suite.yaml@main

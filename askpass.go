@@ -12,7 +12,9 @@ import (
 
 // AskPass defines basic interface to retrieve passphrase.
 type AskPass interface {
+	// GetPass retrieves a passphrase for auth.
 	GetPass() (string, error)
+	// NewPass requests for a new passphrase.
 	NewPass() (string, error)
 }
 
@@ -79,11 +81,42 @@ func (a AskPassWithTerminal) readPass(prompt string) (string, error) {
 	return strings.TrimSpace(string(bytePassword)), nil
 }
 
-// AskPassConstFlow implements AskPass and returns constant.
-type AskPassConstFlow string
+// AskPassConst implements AskPass and returns constant.
+type AskPassConst func() (string, error)
 
 // GetPass implements AskPass interface.
-func (a AskPassConstFlow) GetPass() (string, error) { return string(a), nil }
+func (a AskPassConst) GetPass() (string, error) { return a() }
 
 // NewPass implements AskPass interface.
-func (a AskPassConstFlow) NewPass() (string, error) { return string(a), nil }
+func (a AskPassConst) NewPass() (string, error) { return a() }
+
+// AskPassFirstAvailable tries a chain of AskPass and returns first available.
+type AskPassFirstAvailable []AskPass
+
+// GetPass implements AskPass interface.
+func (a AskPassFirstAvailable) GetPass() (string, error) {
+	for _, ask := range a {
+		pass, err := ask.GetPass()
+		if err != nil {
+			return "", err
+		}
+		if pass != "" {
+			return pass, nil
+		}
+	}
+	return "", nil
+}
+
+// NewPass implements AskPass interface.
+func (a AskPassFirstAvailable) NewPass() (string, error) {
+	for _, ask := range a {
+		pass, err := ask.NewPass()
+		if err != nil {
+			return "", err
+		}
+		if pass != "" {
+			return pass, nil
+		}
+	}
+	return "", fmt.Errorf("passphrase is empty")
+}

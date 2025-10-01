@@ -3,9 +3,11 @@ package keyring
 import (
 	"encoding/json"
 	"errors"
+	"io"
 	"os"
 	"strings"
 
+	"github.com/launchrctl/launchr"
 	"gopkg.in/yaml.v3"
 )
 
@@ -45,12 +47,20 @@ func (s *dataStoreYaml) load() error {
 	dec := yaml.NewDecoder(s.file)
 	var strg storage
 	err = dec.Decode(&strg)
-	if err != nil {
+	// Yaml library returns io.EOF for an empty file.
+	if err != nil && err != io.EOF {
+		// We check directly text because yaml library doesn't wrap errors.
+		// Check if the file has the valid content.
 		if strings.Contains(err.Error(), ErrKeyringMalformed.Error()) {
 			// The keyring is malformed, treat it as new.
+			launchr.Term().Warning().Println("Keyring file is malformed. It will be treated as an empty file.")
 			s.file.Lock()
 			s.loaded = true
 			return nil
+		}
+		// Check if the passphrase was correct.
+		if strings.Contains(err.Error(), ErrIncorrectPass.Error()) {
+			return ErrIncorrectPass
 		}
 		return err
 	}
@@ -206,12 +216,7 @@ func (s *dataStoreYaml) CleanStorage(item SecretItem) error {
 
 // Exists implements DataStore, checks if keyring exists in persistent storage.
 func (s *dataStoreYaml) Exists() bool {
-	ageStorage, ok := s.file.(*ageFile)
-	if !ok {
-		panic("impossible type assertion")
-	}
-
-	info, err := os.Stat(ageStorage.file.fname)
+	info, err := s.file.Stat()
 	if os.IsNotExist(err) {
 		return false
 	}
@@ -220,14 +225,16 @@ func (s *dataStoreYaml) Exists() bool {
 
 // Save implements DataStore interface.
 func (s *dataStoreYaml) Save() error {
+	// Try to unlock first.
+	// If the file has not been created yet, we won't create an empty file on a wrong passphrase.
+	if err := s.file.Unlock(true); err != nil {
+		return err
+	}
 	err := s.file.Open(os.O_CREATE|os.O_RDWR|os.O_TRUNC, 0600)
 	if err != nil {
 		return err
 	}
 	defer s.file.Close()
-	if err = s.file.Unlock(true); err != nil {
-		return err
-	}
 	enc := yaml.NewEncoder(s.file)
 	return enc.Encode(s.data)
 }

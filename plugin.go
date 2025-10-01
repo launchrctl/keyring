@@ -8,28 +8,28 @@ import (
 	"errors"
 	"fmt"
 	"os"
+	"path/filepath"
 	"strings"
-
-	"golang.org/x/term"
 
 	"github.com/launchrctl/launchr"
 	"github.com/launchrctl/launchr/pkg/action"
 	"github.com/launchrctl/launchr/pkg/jsonschema"
+	"golang.org/x/term"
 )
 
 const (
 	procGetKeyValue   = "keyring.GetKeyValue"
-	errTplNotFoundURL = "%s not found in keyring. Use `%s keyring:login` to add it."
-	errTplNotFoundKey = "%s not found in keyring. Use `%s keyring:set` to add it."
+	errTplNotFoundURL = "%q not found in keyring. Use `%s keyring:login %s` to add it."
+	errTplNotFoundKey = "%q not found in keyring. Use `%s keyring:set %s` to add it."
 
 	envVarPassphrase     = launchr.EnvVar("keyring_passphrase")
 	envVarPassphraseFile = launchr.EnvVar("keyring_passphrase_file")
+
+	paramPassphrase     = "keyring-passphrase"      //nolint:gosec // It's a parameter name.
+	paramPassphraseFile = "keyring-passphrase-file" //nolint:gosec // It's a parameter name.
 )
 
-var (
-	passphrase     string
-	passphraseFile string
-)
+var passphrase = &persistentPassphrase{}
 
 var (
 	//go:embed action.list.yaml
@@ -52,9 +52,7 @@ func init() {
 
 // Plugin is [launchr.Plugin] plugin providing a keyring.
 type Plugin struct {
-	k    Keyring
-	cfg  launchr.Config
-	mask *launchr.SensitiveMask
+	k Keyring
 }
 
 // PluginInfo implements [launchr.Plugin] interface.
@@ -64,15 +62,11 @@ func (p *Plugin) PluginInfo() launchr.PluginInfo {
 
 // OnAppInit implements [launchr.Plugin] interface.
 func (p *Plugin) OnAppInit(app launchr.App) error {
-	p.mask = app.SensitiveMask()
-	app.GetService(&p.cfg)
-	p.k = newKeyringService(p.cfg, p.mask)
-	app.AddService(p.k)
-
-	var m action.Manager
-	app.GetService(&m)
-
-	addValueProcessors(m, p.k)
+	var tp *action.TemplateProcessors
+	app.Services().Get(&tp)
+	app.Services().Get(&passphrase.mask)
+	app.Services().Get(&p.k)
+	addTemplateProcessors(tp, p.k)
 	return nil
 }
 
@@ -81,14 +75,17 @@ type GetKeyValueProcessorOptions = *action.GenericValueProcessorOptions[struct {
 	Key string `yaml:"key" validate:"not-empty"`
 }]
 
-// addValueProcessors adds a keyring [action.ValueProcessor] to [action.Manager].
-func addValueProcessors(m action.Manager, keyring Keyring) {
-	m.AddValueProcessor(procGetKeyValue, action.GenericValueProcessor[GetKeyValueProcessorOptions]{
+// addTemplateProcessors adds keyring [action.TemplateProcessors].
+func addTemplateProcessors(tp *action.TemplateProcessors, keyring Keyring) {
+	tp.AddValueProcessor(procGetKeyValue, action.GenericValueProcessor[GetKeyValueProcessorOptions]{
 		Types: []jsonschema.Type{jsonschema.String},
 		Fn: func(v any, opts GetKeyValueProcessorOptions, ctx action.ValueProcessorContext) (any, error) {
 			return processGetByKey(v, opts, ctx, keyring)
 		},
 	})
+
+	ktpl := &keyringTemplateFunc{k: keyring}
+	tp.AddTemplateFunc("keyring", ktpl.Get)
 }
 
 func processGetByKey(value any, opts GetKeyValueProcessorOptions, ctx action.ValueProcessorContext, k Keyring) (any, error) {
@@ -117,8 +114,6 @@ func processGetByKey(value any, opts GetKeyValueProcessorOptions, ctx action.Val
 			return value, err
 		}
 
-		// Ensure keyring storage will be accessible after save.
-		defer k.ResetStorage()
 		err = k.Save()
 		if err != nil {
 			return value, err
@@ -129,6 +124,25 @@ func processGetByKey(value any, opts GetKeyValueProcessorOptions, ctx action.Val
 	}
 
 	return value, buildNotFoundError(opts.Fields.Key, errTplNotFoundKey, err)
+}
+
+// keyringTemplateFunc is a set of template functions to interact with [Keyring] in [action.TemplateProcessors].
+type keyringTemplateFunc struct {
+	k Keyring
+}
+
+// Get returns a keyring key-value by a key.
+//
+// Usage:
+//
+//	{{ keyring.Get "foo-bar" }} - retrieves value of any type.
+func (t *keyringTemplateFunc) Get(key string) (any, error) {
+	v, err := t.k.GetForKey(key)
+	if err == nil {
+		return v.Value, nil
+	}
+
+	return "", buildNotFoundError(key, errTplNotFoundKey, err)
 }
 
 // DiscoverActions implements [launchr.ActionDiscoveryPlugin] interface.
@@ -219,22 +233,16 @@ func (p *Plugin) DiscoverActions(_ context.Context) ([]*action.Action, error) {
 
 // CobraAddCommands implements [launchr.CobraPlugin] interface to provide keyring functionality.
 func (p *Plugin) CobraAddCommands(rootCmd *launchr.Command) error {
-	rootCmd.PersistentFlags().StringVarP(&passphrase, "keyring-passphrase", "", "", "Passphrase for keyring encryption/decryption")
-	rootCmd.PersistentFlags().StringVarP(&passphraseFile, "keyring-passphrase-file", "", "", "File containing passphrase for keyring encryption/decryption")
+	rootCmd.PersistentFlags().StringVarP(&passphrase.pass, paramPassphrase, "", "", "Passphrase for keyring encryption/decryption")
+	rootCmd.PersistentFlags().StringVarP(&passphrase.file, paramPassphraseFile, "", "", "File containing passphrase for keyring encryption/decryption")
 	return nil
 }
 
 // PersistentPreRun implements [launchr.PersistentPreRun] interface.
-func (p *Plugin) PersistentPreRun(_ *launchr.Command, _ []string) error {
-	setPassphrase()
-	// If the passphrase is set with env variables, hide them.
-	if passphraseFile == "" && passphrase != "" {
-		p.mask.AddString(passphrase)
-	}
-	if passphraseFile != "" {
-		p.mask.AddString(passphraseFile)
-	}
-	return nil
+func (p *Plugin) PersistentPreRun(cmd *launchr.Command, _ []string) error {
+	passphrase.changedPass = cmd.Flags().Changed("keyring-passphrase")
+	passphrase.changedFile = cmd.Flags().Changed("keyring-passphrase-file")
+	return passphrase.init()
 }
 
 func buildNotFoundError(item, template string, err error) error {
@@ -243,7 +251,7 @@ func buildNotFoundError(item, template string, err error) error {
 	}
 
 	version := launchr.Version()
-	return fmt.Errorf(template, item, version.Name)
+	return fmt.Errorf(template, item, version.Name, item)
 }
 
 func list(k Keyring, printer *launchr.Terminal) error {
@@ -421,32 +429,70 @@ func purge(k Keyring) error {
 	return k.Destroy()
 }
 
-func setPassphrase() {
+type persistentPassphrase struct {
+	pass string
+	file string
+	mask *launchr.SensitiveMask
+
+	initialized bool
+	changedPass bool
+	changedFile bool
+}
+
+func (p *persistentPassphrase) init() error {
+	if p.initialized {
+		return nil
+	}
+
+	defer func() {
+		// If the passphrase is set with user input or env variable, hide it.
+		if p.mask != nil && p.file == "" && p.pass != "" {
+			p.mask.AddString(p.pass)
+		}
+		p.initialized = true
+	}()
+
 	// Return passphrase if it's already provided.
-	if passphrase != "" {
-		return
+	if p.changedPass || p.pass != "" {
+		return nil
 	}
 	// Check env variable for the passphrase.
-	passphrase = envVarPassphrase.Get()
-	if passphrase != "" {
-		return
+	p.pass = envVarPassphrase.Get()
+	if p.pass != "" {
+		return nil
 	}
-	if envPassFile := envVarPassphraseFile.Get(); passphraseFile == "" && envPassFile != "" {
-		passphraseFile = launchr.MustAbs(envPassFile)
+	if envPassFile := envVarPassphraseFile.Get(); p.file == "" && envPassFile != "" {
+		p.file = envPassFile
+		if !filepath.IsAbs(p.file) {
+			p.file = launchr.MustAbs(p.file)
+		}
 		// Override to absolute path.
-		_ = envVarPassphraseFile.Set(passphraseFile)
+		_ = envVarPassphraseFile.Set(p.file)
 	}
 
 	// Try to read a secret from a file.
-	if passphraseFile != "" {
-		passphraseFile = launchr.MustAbs(passphraseFile)
-		bytes, err := os.ReadFile(passphraseFile) //nolint:gosec // Filepath checked on previous line.
-		if err != nil {
-			return
+	if p.file != "" {
+		if !filepath.IsAbs(p.file) {
+			p.file = launchr.MustAbs(p.file)
 		}
-		passphrase = strings.TrimSpace(string(bytes))
+		bytes, err := os.ReadFile(p.file) //nolint:gosec // Filepath checked on previous line.
+		if err != nil {
+			return err
+		}
+		p.pass = strings.TrimSpace(string(bytes))
+		if p.pass == "" {
+			return fmt.Errorf("passphrase file is empty")
+		}
 		// Set env variable for subprocesses.
-		_ = envVarPassphraseFile.Set(passphraseFile)
-		return
+		_ = envVarPassphraseFile.Set(p.file)
+		return nil
 	}
+	return nil
+}
+
+func (p *persistentPassphrase) get() (string, error) {
+	if err := p.init(); err != nil {
+		return "", err
+	}
+	return p.pass, nil
 }
