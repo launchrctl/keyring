@@ -27,7 +27,8 @@ type dataStoreYaml struct {
 	loaded bool
 }
 
-func (s *dataStoreYaml) load() error {
+// Load implements DataStore interface.
+func (s *dataStoreYaml) Load() error {
 	if s.loaded {
 		return nil
 	}
@@ -72,7 +73,7 @@ func (s *dataStoreYaml) load() error {
 // GetUrls implements DataStore interface.
 func (s *dataStoreYaml) GetUrls() ([]string, error) {
 	var result []string
-	if err := s.load(); err != nil {
+	if err := s.Load(); err != nil {
 		return result, err
 	}
 
@@ -86,7 +87,7 @@ func (s *dataStoreYaml) GetUrls() ([]string, error) {
 // GetKeys implements DataStore interface.
 func (s *dataStoreYaml) GetKeys() ([]string, error) {
 	var result []string
-	if err := s.load(); err != nil {
+	if err := s.Load(); err != nil {
 		return result, err
 	}
 
@@ -99,7 +100,7 @@ func (s *dataStoreYaml) GetKeys() ([]string, error) {
 
 // GetForURL implements DataStore interface.
 func (s *dataStoreYaml) GetForURL(url string) (CredentialsItem, error) {
-	if err := s.load(); err != nil {
+	if err := s.Load(); err != nil {
 		return CredentialsItem{}, err
 	}
 	for i := 0; i < len(s.data.CredentialStorage); i++ {
@@ -112,7 +113,7 @@ func (s *dataStoreYaml) GetForURL(url string) (CredentialsItem, error) {
 
 // GetForKey implements DataStore interface.
 func (s *dataStoreYaml) GetForKey(key string) (KeyValueItem, error) {
-	if err := s.load(); err != nil {
+	if err := s.Load(); err != nil {
 		return KeyValueItem{}, err
 	}
 	for i := 0; i < len(s.data.KeyValueStorage); i++ {
@@ -130,7 +131,7 @@ func (s *dataStoreYaml) AddItem(item SecretItem) error {
 		return ErrEmptyFields
 	}
 
-	if err := s.load(); err != nil {
+	if err := s.Load(); err != nil {
 		return err
 	}
 
@@ -170,7 +171,7 @@ func (s *dataStoreYaml) AddItem(item SecretItem) error {
 
 // RemoveByURL implements DataStore interface.
 func (s *dataStoreYaml) RemoveByURL(url string) error {
-	if err := s.load(); err != nil {
+	if err := s.Load(); err != nil {
 		return err
 	}
 	for i := 0; i < len(s.data.CredentialStorage); i++ {
@@ -184,7 +185,7 @@ func (s *dataStoreYaml) RemoveByURL(url string) error {
 
 // RemoveByKey implements DataStore interface.
 func (s *dataStoreYaml) RemoveByKey(key string) error {
-	if err := s.load(); err != nil {
+	if err := s.Load(); err != nil {
 		return err
 	}
 	for i := 0; i < len(s.data.KeyValueStorage); i++ {
@@ -198,7 +199,7 @@ func (s *dataStoreYaml) RemoveByKey(key string) error {
 
 // CleanStorage implements DataStore interface.
 func (s *dataStoreYaml) CleanStorage(item SecretItem) error {
-	if err := s.load(); err != nil {
+	if err := s.Load(); err != nil {
 		return err
 	}
 

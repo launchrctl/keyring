@@ -68,6 +68,10 @@ func (i KeyValueItem) isEmpty() bool {
 
 // DataStore provides password storage functionality.
 type DataStore interface {
+	// Load loads the keyring data from storage.
+	// This triggers decryption and passphrase prompt if the keyring is encrypted.
+	// It is idempotent - subsequent calls return immediately if already loaded.
+	Load() error
 	// GetUrls retrieves a list of stored URLs.
 	GetUrls() ([]string, error)
 	// GetKeys retrieves a list of stored keys.
@@ -179,6 +183,13 @@ func (k *keyringService) GetForKey(key string) (KeyValueItem, error) {
 func (k *keyringService) AddItem(item SecretItem) error {
 	k.maskItem(item)
 	return k.dataStore.AddItem(item)
+}
+
+// Unlock proactively unlocks the keyring.
+// This triggers the passphrase prompt if the keyring is encrypted.
+// Returns error if the keyring could not be unlocked.
+func (k *keyringService) Unlock() error {
+	return k.dataStore.Load()
 }
 
 // MaskItem masks the item values
