@@ -3,6 +3,7 @@ package keyring
 import (
 	"errors"
 	"reflect"
+	"time"
 
 	"github.com/launchrctl/launchr"
 )
@@ -25,14 +26,59 @@ type SecretItem interface {
 }
 
 // CredentialsItem stores credentials.
+// Supports both basic auth (username/password) and OAuth (access_token/refresh_token).
 type CredentialsItem struct {
 	URL      string `yaml:"url"`
 	Username string `yaml:"username"`
-	Password string `yaml:"password"`
+
+	// AuthType distinguishes between "basic" and "oauth" credentials.
+	// Empty string is treated as "basic" for backward compatibility.
+	AuthType string `yaml:"auth_type,omitempty"`
+
+	// Basic auth fields
+	Password string `yaml:"password,omitempty"`
+
+	// OAuth fields
+	AccessToken   string `yaml:"access_token,omitempty"`
+	RefreshToken  string `yaml:"refresh_token,omitempty"`
+	ExpiresAt     int64  `yaml:"expires_at,omitempty"`
+	Issuer        string `yaml:"issuer,omitempty"`
+	TokenEndpoint string `yaml:"token_endpoint,omitempty"`
 }
 
 func (i CredentialsItem) isEmpty() bool {
-	return i.URL == "" || i.Username == "" || i.Password == ""
+	if i.URL == "" || i.Username == "" {
+		return true
+	}
+	// For OAuth, need access token; for basic, need password
+	if i.AuthType == AuthTypeOAuth {
+		return i.AccessToken == ""
+	}
+	return i.Password == ""
+}
+
+// GetSecret returns the secret value for authentication.
+// For OAuth credentials, returns the access token.
+// For basic credentials, returns the password.
+func (i CredentialsItem) GetSecret() string {
+	if i.AuthType == AuthTypeOAuth {
+		return i.AccessToken
+	}
+	return i.Password
+}
+
+// IsOAuth returns true if this is an OAuth credential.
+func (i CredentialsItem) IsOAuth() bool {
+	return i.AuthType == AuthTypeOAuth
+}
+
+// IsExpired returns true if OAuth token is expired (with 5 minute buffer).
+// Always returns false for basic credentials.
+func (i CredentialsItem) IsExpired() bool {
+	if i.AuthType != AuthTypeOAuth || i.ExpiresAt == 0 {
+		return false
+	}
+	return time.Now().Unix() >= i.ExpiresAt-300
 }
 
 // KeyValueItem stores key-value pair.

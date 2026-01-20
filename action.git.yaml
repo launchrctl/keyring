@@ -1,0 +1,32 @@
+runtime: plugin
+action:
+  title: "Keyring: Git credential helper"
+  description: >-
+    Configure git to use keyring for credentials, or act as git credential helper.
+
+    Setup mode (user runs):
+      plasmactl keyring:git              # Configure for current repo
+      plasmactl keyring:git --global     # Configure globally
+      plasmactl keyring:git https://...  # Configure for specific URL
+
+    Credential helper mode (git calls):
+      plasmactl keyring:git --credential get
+      plasmactl keyring:git --credential store
+      plasmactl keyring:git --credential erase
+  arguments:
+    - name: url
+      title: URL
+      description: URL pattern to configure credential helper for (optional)
+      type: string
+      default: ""
+  options:
+    - name: global
+      title: Global
+      description: Configure git credential helper globally (affects all repos)
+      type: boolean
+      default: false
+    - name: credential
+      title: Credential operation
+      description: Git credential helper operation (get/store/erase). Used by git, not for manual use.
+      type: string
+      default: ""

@@ -3,13 +3,22 @@ action:
   title: "Keyring: Log in"
   description: >-
     Logs in to services like git, docker, etc.
+    Automatically tries OAuth (OIDC discovery) first, falls back to username/password.
   options:
     - name: url
       title: URL
+      description: Service URL to authenticate with
       default: ""
     - name: username
       title: Username
+      description: Username for basic auth (skipped if OAuth succeeds)
       default: ""
     - name: password
       title: Password
+      description: Password for basic auth (skipped if OAuth succeeds)
       default: ""
+    - name: basic
+      title: Force basic auth
+      description: Skip OAuth discovery and use username/password directly
+      type: boolean
+      default: false

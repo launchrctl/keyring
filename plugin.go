@@ -19,6 +19,7 @@ import (
 
 const (
 	procGetKeyValue   = "keyring.GetKeyValue"
+	procGetCredential = "keyring.GetCredential"
 	errTplNotFoundURL = "%q not found in keyring. Use `%s keyring:login %s` to add it."
 	errTplNotFoundKey = "%q not found in keyring. Use `%s keyring:set %s` to add it."
 
@@ -44,6 +45,8 @@ var (
 	actionUnsetYaml []byte
 	//go:embed action.purge.yaml
 	actionPurgeYaml []byte
+	//go:embed action.git.yaml
+	actionGitYaml []byte
 )
 
 func init() {
@@ -75,12 +78,26 @@ type GetKeyValueProcessorOptions = *action.GenericValueProcessorOptions[struct {
 	Key string `yaml:"key" validate:"not-empty"`
 }]
 
+// GetCredentialProcessorOptions is a [action.ValueProcessorOptions] struct for URL-based credentials.
+type GetCredentialProcessorOptions = *action.GenericValueProcessorOptions[struct {
+	URL string `yaml:"url"`
+}]
+
 // addTemplateProcessors adds keyring [action.TemplateProcessors].
 func addTemplateProcessors(tp *action.TemplateProcessors, keyring Keyring) {
+	// Processor for key-value pairs
 	tp.AddValueProcessor(procGetKeyValue, action.GenericValueProcessor[GetKeyValueProcessorOptions]{
 		Types: []jsonschema.Type{jsonschema.String},
 		Fn: func(v any, opts GetKeyValueProcessorOptions, ctx action.ValueProcessorContext) (any, error) {
 			return processGetByKey(v, opts, ctx, keyring)
+		},
+	})
+
+	// Processor for URL-based credentials (with auto-refresh for OAuth)
+	tp.AddValueProcessor(procGetCredential, action.GenericValueProcessor[GetCredentialProcessorOptions]{
+		Types: []jsonschema.Type{jsonschema.String},
+		Fn: func(v any, opts GetCredentialProcessorOptions, ctx action.ValueProcessorContext) (any, error) {
+			return processGetCredential(v, opts, ctx, keyring)
 		},
 	})
 
@@ -126,6 +143,72 @@ func processGetByKey(value any, opts GetKeyValueProcessorOptions, ctx action.Val
 	return value, buildNotFoundError(opts.Fields.Key, errTplNotFoundKey, err)
 }
 
+func processGetCredential(value any, opts GetCredentialProcessorOptions, ctx action.ValueProcessorContext, k Keyring) (any, error) {
+	if ctx.IsChanged {
+		launchr.Term().Warning().Printfln("Skipping processor %q, value is not empty. Value will remain unchanged", procGetCredential)
+		launchr.Log().Warn("skipping processor, value is not empty", "processor", procGetCredential)
+		return value, nil
+	}
+
+	// Skip if URL is empty - return original value (likely empty string)
+	if opts.Fields.URL == "" {
+		return value, nil
+	}
+
+	creds, err := k.GetForURL(opts.Fields.URL)
+	if err != nil {
+		streams := ctx.Input.Streams()
+		isTerminal := streams != nil && streams.In().IsTerminal()
+		if errors.Is(err, ErrNotFound) && isTerminal {
+			// Try OAuth login first
+			printer := launchr.Term()
+			oauthCreds, oauthErr := DoOAuthLogin(context.Background(), opts.Fields.URL, printer)
+			if oauthErr == nil && oauthCreds != nil {
+				if addErr := k.AddItem(*oauthCreds); addErr == nil {
+					_ = k.Save()
+					return oauthCreds.GetSecret(), nil
+				}
+			}
+
+			// Fall back to manual credentials
+			item := CredentialsItem{URL: opts.Fields.URL, AuthType: AuthTypeBasic}
+			if reqErr := RequestCredentialsFromTty(&item); reqErr != nil {
+				return value, reqErr
+			}
+
+			if addErr := k.AddItem(item); addErr != nil {
+				return value, addErr
+			}
+
+			if saveErr := k.Save(); saveErr != nil {
+				return value, saveErr
+			}
+			launchr.Term().Info().Printfln("Credentials for %q have been added to keyring", item.URL)
+
+			return item.GetSecret(), nil
+		}
+
+		return value, buildNotFoundError(opts.Fields.URL, errTplNotFoundURL, err)
+	}
+
+	// Auto-refresh OAuth token if expired
+	if creds.IsOAuth() && creds.IsExpired() {
+		refreshed, changed, refreshErr := RefreshCredentials(context.Background(), creds)
+		if refreshErr != nil {
+			launchr.Log().Warn("token refresh failed", "error", refreshErr)
+			// Continue with expired token, it might still work
+		} else if changed {
+			creds = *refreshed
+			if addErr := k.AddItem(creds); addErr == nil {
+				_ = k.Save()
+				launchr.Log().Debug("OAuth token refreshed", "url", opts.Fields.URL)
+			}
+		}
+	}
+
+	return creds.GetSecret(), nil
+}
+
 // keyringTemplateFunc is a set of template functions to interact with [Keyring] in [action.TemplateProcessors].
 type keyringTemplateFunc struct {
 	k Keyring
@@ -161,13 +244,19 @@ func (p *Plugin) DiscoverActions(_ context.Context) ([]*action.Action, error) {
 	// Action login.
 	loginCmd := action.NewFromYAML("keyring:login", actionLoginYaml)
 	loginCmd.SetRuntime(action.NewFnRuntime(func(_ context.Context, a *action.Action) error {
+		printer := launchr.Term()
+		if rt, ok := a.Runtime().(action.RuntimeTermAware); ok {
+			printer = rt.Term()
+		}
+
 		input := a.Input()
 		creds := CredentialsItem{
 			Username: input.Opt("username").(string),
 			Password: input.Opt("password").(string),
 			URL:      input.Opt("url").(string),
 		}
-		return login(p.k, creds)
+		forceBasic := input.Opt("basic").(bool)
+		return login(p.k, creds, forceBasic, printer)
 	}))
 
 	// Action logout.
@@ -221,6 +310,29 @@ func (p *Plugin) DiscoverActions(_ context.Context) ([]*action.Action, error) {
 		return purge(p.k)
 	}))
 
+	// Action git credential helper.
+	gitCmd := action.NewFromYAML("keyring:git", actionGitYaml)
+	gitCmd.SetRuntime(action.NewFnRuntime(func(_ context.Context, a *action.Action) error {
+		printer := launchr.Term()
+		if rt, ok := a.Runtime().(action.RuntimeTermAware); ok {
+			printer = rt.Term()
+		}
+
+		input := a.Input()
+		credOp := input.Opt("credential").(string)
+		urlArg, _ := input.Arg("url").(string)
+		global := input.Opt("global").(bool)
+
+		// Credential helper mode (called by git)
+		if credOp != "" {
+			streams := input.Streams()
+			return HandleGitCredential(p.k, GitCredentialOp(credOp), streams.In(), streams.Out())
+		}
+
+		// Setup mode (called by user)
+		return SetupGitCredentialHelper(global, urlArg, printer)
+	}))
+
 	return []*action.Action{
 		listCmd,
 		loginCmd,
@@ -228,6 +340,7 @@ func (p *Plugin) DiscoverActions(_ context.Context) ([]*action.Action, error) {
 		setKeyCmd,
 		unsetKeyCmd,
 		purgeCmd,
+		gitCmd,
 	}, nil
 }
 
@@ -287,7 +400,27 @@ func list(k Keyring, printer *launchr.Terminal) error {
 	return nil
 }
 
-func login(k Keyring, creds CredentialsItem) error {
+func login(k Keyring, creds CredentialsItem, forceBasic bool, printer *launchr.Terminal) error {
+	// If URL is provided and not forcing basic auth, try OAuth first
+	if creds.URL != "" && !forceBasic {
+		oauthCreds, err := DoOAuthLogin(context.Background(), creds.URL, printer)
+		if err != nil {
+			printer.Warning().Printfln("OAuth failed: %v", err)
+			printer.Info().Println("Falling back to username/password...")
+		} else if oauthCreds != nil {
+			// OAuth succeeded
+			err = k.AddItem(*oauthCreds)
+			if err != nil {
+				return err
+			}
+			return k.Save()
+		}
+		// OAuth not available or failed, fall through to basic auth
+	}
+
+	// Basic auth flow
+	creds.AuthType = AuthTypeBasic
+
 	// Ask for login elements if some elements are empty.
 	if creds.isEmpty() {
 		err := RequestCredentialsFromTty(&creds)
@@ -300,6 +433,8 @@ func login(k Keyring, creds CredentialsItem) error {
 	if err != nil {
 		return err
 	}
+
+	printer.Success().Println("Credentials stored.")
 	return k.Save()
 }
 
