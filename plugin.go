@@ -403,6 +403,7 @@ func list(k Keyring, printer *launchr.Terminal) error {
 func login(k Keyring, creds CredentialsItem, forceBasic bool, printer *launchr.Terminal) error {
 	// If URL is provided and not forcing basic auth, try OAuth first
 	if creds.URL != "" && !forceBasic {
+		printer.Info().Println("Checking for OAuth/OIDC support...")
 		oauthCreds, err := DoOAuthLogin(context.Background(), creds.URL, printer)
 		if err != nil {
 			printer.Warning().Printfln("OAuth failed: %v", err)
@@ -414,8 +415,10 @@ func login(k Keyring, creds CredentialsItem, forceBasic bool, printer *launchr.T
 				return err
 			}
 			return k.Save()
+		} else {
+			// OAuth not available (no OIDC discovery)
+			printer.Info().Println("No OAuth/OIDC discovered, using username/password...")
 		}
-		// OAuth not available or failed, fall through to basic auth
 	}
 
 	// Basic auth flow
