@@ -1,8 +1,7 @@
 runtime: plugin
 action:
-  title: "Keyring: Set"
-  description: >-
-    Store new key-value pair to keyring
+  title: "Set a key-value pair"
+  description: "Store a key-value pair in the keyring"
   arguments:
     - name: key
       title: Key

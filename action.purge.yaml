@@ -1,4 +1,4 @@
 runtime: plugin
 action:
-  title: "Keyring: Purge"
-  description: Remove existing keyring file
+  title: "Purge keyring"
+  description: "Delete all stored credentials"

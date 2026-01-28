@@ -1,8 +1,7 @@
 runtime: plugin
 action:
-  title: "Keyring: Log out"
-  description: >-
-    Logs out from a service
+  title: "Log out from a service"
+  description: "Remove stored credentials for a service"
   arguments:
     - name: url
       title: URL

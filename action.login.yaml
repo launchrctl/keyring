@@ -1,9 +1,7 @@
 runtime: plugin
 action:
-  title: "Keyring: Log in"
-  description: >-
-    Logs in to services like git, docker, etc.
-    Automatically tries OAuth (OIDC discovery) first, falls back to username/password.
+  title: "Log in to a service"
+  description: "Authenticate to git, docker, or other services"
   options:
     - name: url
       title: URL

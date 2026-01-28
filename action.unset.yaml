@@ -1,8 +1,7 @@
 runtime: plugin
 action:
-  title: "Keyring: Unset"
-  description: >-
-    Removes key-value pair from keyring
+  title: "Unset a key-value pair"
+  description: "Remove a key-value pair from the keyring"
   arguments:
     - name: key
       title: Key

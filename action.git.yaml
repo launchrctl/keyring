@@ -1,6 +1,6 @@
 runtime: plugin
 action:
-  title: "Keyring: Git credential helper"
+  title: "Git credential helper"
   description: "Configure git to use keyring for HTTPS credentials"
   arguments:
     - name: url

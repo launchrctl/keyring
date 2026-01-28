@@ -1,5 +1,4 @@
 runtime: plugin
 action:
-  title: "Keyring: List"
-  description: >-
-    Returns list of all stored key-value pairs and URLs.
+  title: "List stored credentials"
+  description: "List all stored credentials and URLs"
