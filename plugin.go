@@ -518,7 +518,7 @@ func keyValueFromTty(item *KeyValueItem, in *os.File, out *os.File) error {
 		item.Key = strings.TrimSpace(username)
 	}
 
-	if item.Value == "" {
+	if item.Value == "" || item.Value == nil {
 		if showKeyHelp {
 			fmt.Fprintf(out, "Enter value of '%s':", item.Key)
 		} else {
